@@ -6,8 +6,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="theme-color" content="#CCCCCC"/>
         <meta property="og:image" content="/icon_maskable_192.png" />
-        <meta name="description" content="UltraBox is a mod of BeepBox that aims to combine every other beepmod into one." />
-        <title>UltraBox Sample Extractor</title>
+        <meta name="description" content="RolyBox is a Beepbox fork for creating and sharing new features." />
+        <title>RolyBox Sample Extractor</title>
         <style>
 :root {
 	--close-symbol: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="-13 -13 26 26"><path fill="gray" d="M -7.07 -5.66 L -5.66 -7.07 L 0 -1.4 L 5.66 -7.07 L 7.07 -5.66 L 1.4 0 L 7.07 5.66 L 5.66 7.07 L 0 1.4 L -5.66 7.07 L -7.07 5.66 L -1.4 0 z"/></svg>');
@@ -222,7 +222,7 @@ aside {
         <main>
             <div class="welcome-area">
                 <h1 class="accent-text">Sample Extractor</h1>
-                <p>This utility helps you take sounds from larger files with several sounds inside (such as <a href="https://en.wikipedia.org/wiki/SoundFont">soundfonts</a>, with their well-known <code>.sf2</code> file extension), and save them as individual <a href="https://en.wikipedia.org/wiki/WAV"><code>.wav</code></a> files, for use in your <a href="https://ultraabox.github.io">UltraBox</a> songs.</p>
+                <p>This utility helps you take sounds from larger files with several sounds inside (such as <a href="https://en.wikipedia.org/wiki/SoundFont">soundfonts</a>, with their well-known <code>.sf2</code> file extension), and save them as individual <a href="https://en.wikipedia.org/wiki/WAV"><code>.wav</code></a> files, for use in your <a href="https://ultraabox.github.io">RolyBox</a> songs.</p>
                 <p>To start, drop a file (in one of the <a class="supported-formats-link" href="#">supported formats</a>) on this page, or use your browser's file picker:</p>
                 <div class="center">
                     <input type="file" multiple id="file-picker">
@@ -310,7 +310,7 @@ aside {
                     </li>
                     <li>
                         <code>.js</code>:
-                        <a href="https://ultraabox.github.io">UltraBox</a> built-in sample script<br>
+                        <a href="https://ultraabox.github.io">RolyBox</a> built-in sample script<br>
                         Should also work with the sample scripts from <a href="https://paandorasbox.github.io">Pandora's Box</a>
                     </li>
                     <li>
@@ -6049,7 +6049,7 @@ function loadSampleScript(file) {
         hasMultipleSamplesSelected = false;
         const sampleGroup = new SampleGroup(file.name);
         // This is the format used in:
-        // - UltraBox (https://ultraabox.github.io)
+        // - RolyBox (https://ultraabox.github.io)
         // - Pandora's Box (https://paandorasbox.github.io)
         let match = null;
         do {

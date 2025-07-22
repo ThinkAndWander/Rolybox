@@ -1,7 +1,7 @@
 {
-	"name": "UltraBox",
-	"short_name": "UltraBox",
-	"description": "UltraBox is a mod of BeepBox that aims to combine every other beepmod into one.",
+	"name": "RolyBox",
+	"short_name": "RolyBox",
+	"description": "RolyBox is a Beepbox fork for creating and sharing new features.",
 	"scope": "/",
 	"start_url": ".",
 	"display": "browser",
