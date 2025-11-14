@@ -4701,6 +4701,9 @@ var beepbox = (function (exports) {
                 this.initToDefault(true);
             }
         }
+        get partsPerPattern() {
+            return this.beatsPerBar * Config.partsPerBeat;
+        }
         getChannelCount() {
             return this.pitchChannelCount + this.noiseChannelCount + this.modChannelCount;
         }
