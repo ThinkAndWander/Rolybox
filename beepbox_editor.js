@@ -8771,10 +8771,18 @@ input.tab-settings-radio + div {
 	pointer-events: none;
 }
 
+.selectionOps-checkbox:disabled {
+    opacity: 0.5;
+}
+
 .beepboxEditor button.selectionOps-actionbutton + .tip,
 .beepboxEditor button.selectionOps-actionbutton + .selectionOps-actionbutton,
 .beepboxEditor .checkbox-container + .checkbox-container {
 	margin-left: 0.2rem;
+}
+
+.beepboxEditor .editor-controls + .selectionOps-action {
+    margin-top: 0.2rem;
 }
 
 .beepboxEditor .selectionOps-row-inside + .selectionOps-row-inside {
@@ -9366,6 +9374,9 @@ input.tab-settings-radio + div {
 	mask-repeat: no-repeat;
 	mask-position: center;
 }
+.beepboxEditor .selectContainer:not(.menu):has(select:disabled)::after {
+    background: color-mix(in srgb, currentColor 50%, transparent);
+}
 .beepboxEditor .selectContainer.menu::after {
 	content: "";
 	flex-shrink: 0;
@@ -9401,6 +9412,10 @@ input.tab-settings-radio + div {
 	-webkit-appearance:none;
 	-moz-appearance: none;
 	appearance: none;
+}
+.beepboxEditor select:disabled {
+    opacity: 0.5;
+	pointer-events: none;
 }
 .beepboxEditor select option:disabled {
 	color: ${ColorConfig.linkAccent};
@@ -26719,10 +26734,13 @@ li.select2-results__option[role=group] > strong:hover {
         }
     }
     class ChangeSplitNotesAtPoint extends ChangeSequence {
-        constructor(doc, pattern, cutPoint) {
+        constructor(doc, pattern, cutPoint, pitchIndex) {
             super();
             for (let i = pattern.notes.length - 1; i >= 0; i--) {
                 const note = pattern.notes[i];
+                if (pitchIndex !== undefined && (note.pitches.length !== 1 || note.pitches[0] !== pitchIndex)) {
+                    continue;
+                }
                 if (note.start < cutPoint && cutPoint < note.end) {
                     const cutRelativeToNote = cutPoint - note.start;
                     const cutIndex = note.pins.findIndex((pin) => pin.time > cutRelativeToNote);
@@ -34652,21 +34670,22 @@ You should be redirected to the song at:<br /><br />
     ];
 
     class ChangeMergeAcrossAdjacent extends ChangeSequence {
-        constructor(doc, pattern, x1, x2) {
+        constructor(doc, pattern, x1, x2, pitchIndex) {
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length <= 1) {
+            let notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length <= 1) {
                 return;
             }
             let note;
             let prevNote = null;
-            for (let i = 1; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
-                prevNote = pattern.notes[i - 1];
+            for (let i = 1; i < notesArray.length; i++) {
+                note = notesArray[i];
+                prevNote = notesArray[i - 1];
                 if (note.end <= x1) {
                     continue;
                 }
@@ -34680,7 +34699,8 @@ You should be redirected to the song at:<br /><br />
                 if (note.start === prevNote.end
                     && note.pitches.length === prevNote.pitches.length
                     && new Set(note.pitches).isSubsetOf(new Set(prevNote.pitches.map(pitch => pitch + lastInterval)))) {
-                    this.append(new ChangeMergeAcross(doc, pattern, prevNote.start, note.end));
+                    notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+                    this.append(new ChangeMergeAcross(doc, pattern, prevNote.start, note.end, pitchIndex));
                     prevNote = null;
                     i -= 1;
                 }
@@ -34690,24 +34710,25 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeMergeAcross extends ChangeSequence {
-        constructor(doc, pattern, x1, x2) {
+        constructor(doc, pattern, x1, x2, pitchIndex) {
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length <= 1) {
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length <= 1) {
                 return;
             }
             let note;
             let firstNote = null;
             let lastNote = null;
-            let firstPitch = 0, notePitch = 0;
+            let basePitch = 0, notePitch = 0;
             const notesMergedOver = [];
             let notePinList = [];
-            for (let i = 0; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                note = notesArray[i];
                 if (note.end <= x1) {
                     continue;
                 }
@@ -34716,7 +34737,7 @@ You should be redirected to the song at:<br /><br />
                 }
                 if (!firstNote) {
                     firstNote = note;
-                    firstPitch = firstNote.pitches.reduce((a, b) => Math.min(a, b));
+                    basePitch = Math.min(...firstNote.pitches);
                     notesMergedOver.push(note);
                     notePinList = firstNote.pins;
                 }
@@ -34724,13 +34745,13 @@ You should be redirected to the song at:<br /><br />
                     lastNote = note;
                 }
                 if (note !== firstNote) {
-                    notePitch = note.pitches.reduce((a, b) => Math.min(a, b));
+                    notePitch = Math.min(...note.pitches);
                     let newPin;
                     let lastPin = notePinList.length > 0 ? notePinList[notePinList.length - 1] : null;
                     let pinBeforeLast;
                     for (const pin of note.pins) {
                         newPin = {
-                            interval: notePitch + pin.interval - firstPitch,
+                            interval: notePitch + pin.interval - basePitch,
                             size: pin.size,
                             time: note.start - firstNote.start + pin.time
                         };
@@ -34763,7 +34784,7 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeBridgeAcross extends ChangeSequence {
-        constructor(doc, pattern, doBends, copyEnds, x1, x2) {
+        constructor(doc, pattern, grow, doBends, copyEnds, x1, x2, pitchIndex) {
             super();
             this._notesInserted = [];
             this._pattern = pattern;
@@ -34772,7 +34793,8 @@ You should be redirected to the song at:<br /><br />
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length <= 1) {
+            let notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length <= 1) {
                 return;
             }
             if (x1 !== 0) {
@@ -34786,8 +34808,8 @@ You should be redirected to the song at:<br /><br />
             let noteLeftOfSelection = null;
             let startSize;
             let newNote;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                note = notesArray[i];
                 if (note.end <= x1) {
                     noteLeftOfSelection = i;
                     continue;
@@ -34799,7 +34821,7 @@ You should be redirected to the song at:<br /><br />
                     continue;
                 }
                 if (i > 0) {
-                    prevNote = pattern.notes[i - 1];
+                    prevNote = notesArray[i - 1];
                     if (note.start - prevNote.end > 0) {
                         startSize = copyEnds ? prevNote.pins[0].size : prevNote.pins[prevNote.pins.length - 1].size;
                         newNote = new Note(-1, prevNote.end, note.start, startSize, false);
@@ -34811,7 +34833,7 @@ You should be redirected to the song at:<br /><br />
                             copyEnds ? prevNote.pins[prevNote.pins.length - 1].size :
                                 doBends ? note.pins[0].size :
                                     newNote.pins[1].size;
-                        if (doBends) {
+                        if (pitchIndex === undefined && doBends) {
                             newNote.pins[1].interval = note.pitches[0] - newNote.pitches[0] + note.pins[0].interval;
                         }
                         this._notesInserted.push(newNote);
@@ -34822,6 +34844,17 @@ You should be redirected to the song at:<br /><br />
                 return;
             }
             this.append(new ChangeNotesAdded(doc, pattern, [], this._notesInserted));
+            if (grow) {
+                notesArray = pitchIndex === undefined
+                    ? pattern.notes
+                    : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+                for (let i = this._notesInserted.length - 1; i >= 0; i--) {
+                    const index = notesArray.indexOf(this._notesInserted[i]);
+                    if (index !== -1) {
+                        this.append(new ChangeMergeAcrossAdjacent(doc, pattern, notesArray[index - 1].start, notesArray[index].end, pitchIndex));
+                    }
+                }
+            }
             doc.notifier.changed();
             this._didSomething();
         }
@@ -34837,7 +34870,7 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeSplitAcross extends ChangeSequence {
-        constructor(doc, pattern, numCuts, x1, x2) {
+        constructor(doc, pattern, numCuts, x1, x2, pitchIndex) {
             super();
             this._splitNotes = [];
             this._cuts = [];
@@ -34868,7 +34901,7 @@ You should be redirected to the song at:<br /><br />
             }
             let splitOp;
             for (let i = 0; i < cutIndices.length; i++) {
-                splitOp = new ChangeSplitNotesAtPoint(doc, pattern, cutIndices[i]);
+                splitOp = new ChangeSplitNotesAtPoint(doc, pattern, cutIndices[i], pitchIndex);
                 this.append(splitOp);
                 this._splitNotes.push(splitOp.leftNote, splitOp.rightNote);
             }
@@ -34895,25 +34928,26 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeStackLeftAcross extends ChangeSequence {
-        constructor(doc, pattern, x1, x2) {
+        constructor(doc, pattern, x1, x2, pitchIndex) {
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length === 0) {
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length === 0) {
                 return;
             }
             if (x1 !== 0) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
             }
             if (x2 !== doc.song.partsPerPattern) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
             }
             let firstNote = false;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                const note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                const note = notesArray[i];
                 if (note.end <= x1) {
                     continue;
                 }
@@ -34926,7 +34960,7 @@ You should be redirected to the song at:<br /><br />
                     note.end = note.start + note.pins[note.pins.length - 1].time;
                 }
                 else if (i > 0) {
-                    note.start = pattern.notes[i - 1].end;
+                    note.start = notesArray[i - 1].end;
                     note.end = note.start + note.pins[note.pins.length - 1].time;
                 }
             }
@@ -34935,9 +34969,91 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeStepAcross extends ChangeSequence {
-        constructor(editor, doc, channelIndex, pattern, data, x1, x2) {
+        constructor(doc, channelIndex, pattern, data, x1, x2, pitchIndex) {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             super();
+            const matchVariables = /(?<!\w)([a-zA-Z]+)\w*/g;
+            const matchNotWhitelist = /[^0-9A-Za-z. !&|+\-*\/%=<>?:,()]|=\s*>/g;
+            function resolve(entry, curr, stepInLength, endNum, info) {
+                if (typeof entry === 'number') {
+                    return entry;
+                }
+                const scaleForVol = (data.affect === 'vol') ? volRange : 1;
+                const relPrev = (data.affect === 'vol') ? info.notePinSize.prev : (data.affect === 'bends') ? info.notePinInterval.prev : info.notePitch.prev;
+                const relMin = (data.affect === 'vol') ? info.notePinSize.min : (data.affect === 'bends') ? info.notePinInterval.min : info.notePitch.min;
+                const relMax = (data.affect === 'vol') ? info.notePinSize.max : (data.affect === 'bends') ? info.notePinInterval.max : info.notePitch.max;
+                const relAvg = (data.affect === 'vol') ? info.notePinSize.avg : (data.affect === 'bends') ? info.notePinInterval.avg : info.notePitch.avg;
+                try {
+                    entry = entry
+                        .replaceAll(matchVariables, match => {
+                        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23;
+                        match = match.trim().toLowerCase();
+                        return Object.hasOwn(Math, match) ? `Math.${match}`
+                            : Object.hasOwn(Math, match.toUpperCase()) ? `Math.${match.toUpperCase()}`
+                                : match === 'x' ? String(curr)
+                                    : match === 'prev' ? String((relPrev !== null && relPrev !== void 0 ? relPrev : 0) / scaleForVol)
+                                        : match === 'num' ? String(stepInLength)
+                                            : match === 'len' ? String(endNum === 0 ? 1 : endNum)
+                                                : match === 'high' ? String((relMax !== null && relMax !== void 0 ? relMax : 0) / scaleForVol)
+                                                    : match === 'low' ? String((relMin !== null && relMin !== void 0 ? relMin : 0) / scaleForVol)
+                                                        : match === 'avg' ? String((relAvg !== null && relAvg !== void 0 ? relAvg : 0) / scaleForVol)
+                                                            : match === 'maxrange' ? String(data.affect === 'vol' ? maxVolume : pitchLimit)
+                                                                : match === 'minrange' ? String(data.affect === 'vol' ? minVolume : 0)
+                                                                    : match === 'pitchesavg' ? String((_b = (_a = info.allLowPitch) === null || _a === void 0 ? void 0 : _a.avg) !== null && _b !== void 0 ? _b : 0)
+                                                                        : match === 'pitchesmax' ? String((_d = (_c = info.allLowPitch) === null || _c === void 0 ? void 0 : _c.max) !== null && _d !== void 0 ? _d : 0)
+                                                                            : match === 'pitchesmin' ? String((_f = (_e = info.allLowPitch) === null || _e === void 0 ? void 0 : _e.min) !== null && _f !== void 0 ? _f : 0)
+                                                                                : match === 'pitchavg' ? String((_h = (_g = info.notePitch) === null || _g === void 0 ? void 0 : _g.avg) !== null && _h !== void 0 ? _h : 0)
+                                                                                    : match === 'pitchmax' ? String((_k = (_j = info.notePitch) === null || _j === void 0 ? void 0 : _j.max) !== null && _k !== void 0 ? _k : 0)
+                                                                                        : match === 'pitchmin' ? String((_m = (_l = info.notePitch) === null || _l === void 0 ? void 0 : _l.min) !== null && _m !== void 0 ? _m : 0)
+                                                                                            : match === 'pitch' ? String((_p = (_o = info.notePitch) === null || _o === void 0 ? void 0 : _o.curr) !== null && _p !== void 0 ? _p : 0)
+                                                                                                : match === 'pitchprev' ? String((_r = (_q = info.notePitch) === null || _q === void 0 ? void 0 : _q.prev) !== null && _r !== void 0 ? _r : 0)
+                                                                                                    : match === 'bendsavg' ? String((_t = (_s = info.allPinInterval) === null || _s === void 0 ? void 0 : _s.avg) !== null && _t !== void 0 ? _t : 0)
+                                                                                                        : match === 'bendsmax' ? String((_v = (_u = info.allPinInterval) === null || _u === void 0 ? void 0 : _u.max) !== null && _v !== void 0 ? _v : 0)
+                                                                                                            : match === 'bendsmin' ? String((_x = (_w = info.allPinInterval) === null || _w === void 0 ? void 0 : _w.min) !== null && _x !== void 0 ? _x : 0)
+                                                                                                                : match === 'bendavg' ? String((_z = (_y = info.notePinInterval) === null || _y === void 0 ? void 0 : _y.avg) !== null && _z !== void 0 ? _z : 0)
+                                                                                                                    : match === 'bendmax' ? String((_1 = (_0 = info.notePinInterval) === null || _0 === void 0 ? void 0 : _0.max) !== null && _1 !== void 0 ? _1 : 0)
+                                                                                                                        : match === 'bendmin' ? String((_3 = (_2 = info.notePinInterval) === null || _2 === void 0 ? void 0 : _2.min) !== null && _3 !== void 0 ? _3 : 0)
+                                                                                                                            : match === 'bend' ? String((_5 = (_4 = info.notePinInterval) === null || _4 === void 0 ? void 0 : _4.curr) !== null && _5 !== void 0 ? _5 : 0)
+                                                                                                                                : match === 'bendprev' ? String((_7 = (_6 = info.notePinInterval) === null || _6 === void 0 ? void 0 : _6.prev) !== null && _7 !== void 0 ? _7 : 0)
+                                                                                                                                    : match === 'volsage' ? String(((_9 = (_8 = info.allPinSize) === null || _8 === void 0 ? void 0 : _8.avg) !== null && _9 !== void 0 ? _9 : 0) / volRange)
+                                                                                                                                        : match === 'volsmax' ? String(((_11 = (_10 = info.allPinSize) === null || _10 === void 0 ? void 0 : _10.max) !== null && _11 !== void 0 ? _11 : 0) / volRange)
+                                                                                                                                            : match === 'volsmin' ? String(((_13 = (_12 = info.allPinSize) === null || _12 === void 0 ? void 0 : _12.min) !== null && _13 !== void 0 ? _13 : 0) / volRange)
+                                                                                                                                                : match === 'volavg' ? String(((_15 = (_14 = info.notePinSize) === null || _14 === void 0 ? void 0 : _14.avg) !== null && _15 !== void 0 ? _15 : 0) / volRange)
+                                                                                                                                                    : match === 'volmax' ? String(((_17 = (_16 = info.notePinSize) === null || _16 === void 0 ? void 0 : _16.max) !== null && _17 !== void 0 ? _17 : 0) / volRange)
+                                                                                                                                                        : match === 'volmin' ? String(((_19 = (_18 = info.notePinSize) === null || _18 === void 0 ? void 0 : _18.min) !== null && _19 !== void 0 ? _19 : 0) / volRange)
+                                                                                                                                                            : match === 'vol' ? String(((_21 = (_20 = info.notePinSize) === null || _20 === void 0 ? void 0 : _20.curr) !== null && _21 !== void 0 ? _21 : 0) / volRange)
+                                                                                                                                                                : match === 'volprev' ? String(((_23 = (_22 = info.notePinSize) === null || _22 === void 0 ? void 0 : _22.prev) !== null && _23 !== void 0 ? _23 : 0) / volRange)
+                                                                                                                                                                    : '';
+                    });
+                    entry = entry.replaceAll(matchNotWhitelist, '');
+                    entry = +(Function('return ' + entry)());
+                    return (typeof entry === 'number' && !isNaN(entry) && isFinite(entry)) ? entry : 0;
+                }
+                catch (_a) {
+                    return 0;
+                }
+            }
+            function getArrayValue(val, index, ratios, lengths, data, stepArray, info) {
+                if (!stepArray) {
+                    return undefined;
+                }
+                if (ratios.length === 3 && (stepArray === null || stepArray === void 0 ? void 0 : stepArray.length) !== 0) {
+                    const slot = data.per === 'note' ? 0 :
+                        data.per === 'pin' ? 1 :
+                            2;
+                    const current = ratios[slot] * lengths[slot];
+                    if (data.type !== 'cycle') {
+                        const numbersLR = [
+                            resolve(stepArray[Math.floor(ratios[slot] * (stepArray.length - 1))], val, current, lengths[slot], info),
+                            resolve(stepArray[Math.ceil(ratios[slot] * (stepArray.length - 1))], val, current, lengths[slot], info)
+                        ];
+                        let fraction = ratios[slot] * (stepArray.length - 1) - Math.floor(ratios[slot] * (stepArray.length - 1));
+                        return data.type === 'step' ? numbersLR[0] : numbersLR[0] + fraction * (numbersLR[1] - numbersLR[0]);
+                    }
+                    return resolve(stepArray[index % stepArray.length], val, current, lengths[slot], info);
+                }
+                return undefined;
+            }
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
@@ -34948,19 +35064,24 @@ You should be redirected to the song at:<br /><br />
             }
             let minVolume = 0;
             let maxVolume = Config.noteSizeMax;
-            if (doc.song.getChannelIsMod(channelIndex)) {
-                const modTrack = Math.min(0, Config.modCount - 1 - ((_a = editor.getCursorNotePitch()) !== null && _a !== void 0 ? _a : 0));
+            let isModChannel = doc.song.getChannelIsMod(channelIndex);
+            if (isModChannel) {
+                const modTrack = pitchIndex ? Config.modCount - pitchIndex - 1 : 0;
                 let mod = doc.song.channels[doc.channel].instruments[doc.getCurrentInstrument()].modulators[modTrack];
                 minVolume = Config.modulators[mod].convertRealFactor;
                 maxVolume = minVolume + doc.song.getVolumeCapForSetting(true, mod, doc.song.channels[doc.channel].instruments[doc.getCurrentInstrument()].modFilterTypes[modTrack]);
             }
             let volRange = maxVolume - minVolume;
-            let intersects = getIntersects(doc, pattern, x1, x2, this);
+            let intersects = getIntersects(doc, pattern, x1, x2, pitchIndex, this);
             let note;
+            let prevNote;
             let firstIndex = intersects.L !== -1 ? intersects.L + 1 : -1;
             let endIndex = intersects.R !== -1 ? intersects.R - 1 : -1;
             for (let i = 0; i < pattern.notes.length; i++) {
                 note = pattern.notes[i];
+                if (isModChannel && (note.pitches.length !== 1 || note.pitches[0] !== pitchIndex)) {
+                    continue;
+                }
                 if (note.end <= x1) {
                     continue;
                 }
@@ -34972,64 +35093,52 @@ You should be redirected to the song at:<br /><br />
                     firstIndex = i;
                 }
             }
+            if (endIndex === -1 && isModChannel) {
+                endIndex = pattern.notes.findLastIndex((note) => note.pitches.length === 1 && note.pitches[0] === pitchIndex);
+            }
             if (endIndex === -1) {
                 endIndex = pattern.notes.length - 1;
             }
-            const matchVariables = /(?<!\w)([a-zA-Z]+)\w*/g;
-            const matchNotWhitelist = /[^0-9A-Za-z. !&|+\-*\/%=<>?:,()]|=\s*>/g;
-            const resolve = (entry, val, index, endNum, info) => {
-                if (typeof entry === 'number') {
-                    return entry;
-                }
-                try {
-                    entry = entry
-                        .replaceAll(matchVariables, match => {
-                        match = match.trim().toLowerCase();
-                        return Object.hasOwn(Math, match) ? `Math.${match}`
-                            : Object.hasOwn(Math, match.toUpperCase()) ? `Math.${match.toUpperCase()}`
-                                : match === 'x' ? String(val) : match === 'num' ? String(index)
-                                    : match === 'len' ? String(endNum === 0 ? 1 : endNum)
-                                        : match === 'maxval' ? String(maxVolume) : match === 'minval' ? String(minVolume)
-                                            : match === 'smallest' ? String(info.min / (maxVolume - minVolume))
-                                                : match === 'biggest' ? String(info.max / (maxVolume - minVolume))
-                                                    : match === 'average' ? String(info.avg / (maxVolume - minVolume))
-                                                        : match === 'prev' ? String(info.prevVal / (maxVolume - minVolume))
-                                                            : '';
-                    });
-                    entry = entry.replaceAll(matchNotWhitelist, '');
-                    entry = +(Function('return ' + entry)());
-                    return (typeof entry === 'number' && !isNaN(entry) && isFinite(entry)) ? entry : 0;
-                }
-                catch (_a) {
-                    return 0;
-                }
+            const init = { min: Number.MAX_SAFE_INTEGER, max: Number.MIN_SAFE_INTEGER, avg: 0 };
+            const noteData = {
+                allPinSize: Object.assign({}, init), notePinSize: Object.assign({}, init),
+                allLowPitch: Object.assign({}, init), notePitch: Object.assign({}, init),
+                allPinInterval: Object.assign({}, init), notePinInterval: Object.assign({}, init)
             };
-            const getArrayValue = (val, index, ratios, lengths, stepArray, info) => {
-                if (!stepArray) {
-                    return undefined;
+            let noteCount = 0;
+            for (let i = firstIndex; i < endIndex + 1; i++) {
+                note = pattern.notes[i];
+                if (isModChannel && (note.pitches.length !== 1 ||
+                    note.pitches[0] !== pitchIndex ||
+                    note.pins.some(pin => pin.interval !== 0))) {
+                    continue;
                 }
-                if (ratios.length === 3 && (stepArray === null || stepArray === void 0 ? void 0 : stepArray.array.length) !== 0) {
-                    const slot = (stepArray === null || stepArray === void 0 ? void 0 : stepArray.per) === 'note' ? 0 :
-                        (stepArray === null || stepArray === void 0 ? void 0 : stepArray.per) === 'pin' ? 1 :
-                            2;
-                    if (stepArray.type !== 'cycle') {
-                        const numbersLR = [
-                            resolve(stepArray.array[Math.floor(ratios[slot] * (stepArray.array.length - 1))], val, index, lengths[slot], info),
-                            resolve(stepArray.array[Math.ceil(ratios[slot] * (stepArray.array.length - 1))], val, index, lengths[slot], info)
-                        ];
-                        let fraction = ratios[slot] * (stepArray.array.length - 1) - Math.floor(ratios[slot] * (stepArray.array.length - 1));
-                        return stepArray.type === 'step' ? numbersLR[0] : numbersLR[0] + fraction * (numbersLR[1] - numbersLR[0]);
-                    }
-                    return resolve(stepArray.array[index % stepArray.array.length], val, index, lengths[slot], info);
-                }
-                return undefined;
-            };
-            const pitchLimit = doc.song.getChannelIsNoise(channelIndex) ? Config.drumCount - 1 : Config.maxPitch;
+                const basePitch = Math.min(...note.pitches);
+                noteData.allLowPitch.min = Math.min(noteData.allLowPitch.min, basePitch);
+                noteData.allLowPitch.max = Math.max(noteData.allLowPitch.max, basePitch);
+                noteData.allLowPitch.avg = noteData.allLowPitch.avg + basePitch;
+                let pinAvg = 0;
+                const pinSizes = note.pins.map(p => { pinAvg += p.size; return p.size; });
+                noteData.allPinSize.min = Math.min(...pinSizes, noteData.allPinSize.min);
+                noteData.allPinSize.max = Math.max(...pinSizes, noteData.allPinSize.max);
+                noteData.allPinSize.avg = noteData.allPinSize.avg + (pinAvg / pinSizes.length);
+                pinAvg = 0;
+                const pinIntervals = note.pins.map(p => { pinAvg += p.interval; return p.interval; });
+                noteData.allPinInterval.min = Math.min(...pinIntervals, noteData.allPinInterval.min);
+                noteData.allPinInterval.max = Math.max(...pinIntervals, noteData.allPinInterval.max);
+                noteData.allPinInterval.avg = noteData.allPinInterval.avg + (pinAvg / pinIntervals.length);
+                noteCount++;
+            }
+            noteData.allLowPitch.avg = noteData.allLowPitch.avg / noteCount;
+            noteData.allPinSize.avg = noteData.allPinSize.avg / noteCount;
+            noteData.allPinInterval.avg = noteData.allPinInterval.avg / noteCount;
+            let prevLowPitch = -1;
+            const pitchLimit = doc.song.getChannelIsMod(channelIndex) ? Config.modCount :
+                doc.song.getChannelIsNoise(channelIndex) ? Config.drumCount - 1 :
+                    Config.maxPitch;
             const noteEndNum = endIndex - firstIndex;
-            let volMultValue = 1;
-            let volAddValue = 0;
-            let pitchMultValue = 1;
-            let pitchAddValue = 0;
+            let multValue = 1;
+            let addValue = 0;
             let noteRatio;
             let notePinOrPitchRatio;
             let timeRatio;
@@ -35037,78 +35146,179 @@ You should be redirected to the song at:<br /><br />
             let ratios;
             for (let i = firstIndex; i < endIndex + 1; i++) {
                 note = pattern.notes[i];
+                prevNote = (i > 0) ? pattern.notes[i - 1] : undefined;
+                if (isModChannel && (note.pitches.length !== 1 ||
+                    note.pitches[0] !== pitchIndex ||
+                    note.pins.some(pin => pin.interval !== 0))) {
+                    continue;
+                }
+                let avgSize = 0;
+                let avgInterval = 0;
+                note.pins.forEach(pin => {
+                    avgSize += pin.size;
+                    noteData.notePinSize.min = Math.min(noteData.notePinSize.min, pin.size);
+                    noteData.notePinSize.max = Math.max(noteData.notePinSize.max, pin.size);
+                    noteData.notePinSize.avg = noteData.notePinSize.avg + pin.size;
+                    avgInterval += pin.interval;
+                    noteData.notePinInterval.min = Math.min(noteData.notePinInterval.min, pin.interval);
+                    noteData.notePinInterval.max = Math.max(noteData.notePinInterval.max, pin.interval);
+                    noteData.notePinInterval.avg = noteData.notePinInterval.avg + pin.interval;
+                });
+                noteData.notePinSize.avg = noteData.notePinSize.avg / note.pins.length;
+                noteData.notePinInterval.avg = noteData.notePinInterval.avg / note.pins.length;
+                noteData.notePitch.min = Math.min(...note.pitches);
+                noteData.notePitch.max = Math.max(...note.pitches);
+                noteData.notePitch.avg = note.pitches.reduce((prev, curr) => prev + curr) / note.pitches.length;
+                noteData.notePitch.curr = noteData.notePitch.min;
+                noteData.notePitch.prev = prevLowPitch;
+                prevLowPitch = noteData.notePitch.min;
                 noteRatio = noteEndNum === 0 ? 1 : (i - firstIndex) / noteEndNum;
-                let pin;
-                let prevPin;
-                let timeSince;
-                let lerpTime;
-                const arrays = [data.pitchAdd, data.pitchMult, data.volAdd, data.volMult];
-                const allPins = arrays.some(o => { var _a; return (o === null || o === void 0 ? void 0 : o.type) === 'cycle' || ((_a = o === null || o === void 0 ? void 0 : o.array) === null || _a === void 0 ? void 0 : _a.some(p => typeof p === 'string' && p.match(/num|random|\?.*?:/gi))); });
-                const allPinInserts = allPins ? [] : arrays.map(o => { var _a; return Math.round(doc.song.partsPerPattern / ((_a = o === null || o === void 0 ? void 0 : o.array.length) !== null && _a !== void 0 ? _a : 1)); });
-                for (let j = 1; j < note.pins.length; j++) {
-                    pin = note.pins[j];
-                    prevPin = note.pins[j - 1];
-                    timeSince = pin.time - prevPin.time;
-                    let time;
-                    for (let k = 1; k < timeSince; k++) {
-                        lerpTime = k / timeSince;
-                        time = prevPin.time + k;
-                        if (allPins || allPinInserts.some(o => time % o === 0)) {
-                            note.pins.splice(j, 0, Object.assign(Object.assign({}, prevPin), { interval: Math.round(prevPin.interval + lerpTime * (pin.interval - prevPin.interval)), size: Math.round(prevPin.size + lerpTime * (pin.size - prevPin.size)), time: prevPin.time + k }));
-                            j++;
+                if (!data.onlyExistingPins && (data.affect === 'vol' || data.affect === 'bends')) {
+                    let pin;
+                    let prev;
+                    let timeSince;
+                    let lerpTime;
+                    const regex = /num|random|prev|x|\?.*?:/gi;
+                    const allPins = (data.type === 'cycle' ||
+                        [data.add, data.mult].some(arr => arr === null || arr === void 0 ? void 0 : arr.some(p => typeof p === 'string' && p.match(regex))));
+                    const allPinInserts = allPins ? []
+                        : [data.add, data.mult].map(arr => { var _a; return Math.round(doc.song.partsPerPattern / ((_a = arr === null || arr === void 0 ? void 0 : arr.length) !== null && _a !== void 0 ? _a : 1)); });
+                    for (let pind = 1; pind < note.pins.length; pind++) {
+                        pin = note.pins[pind];
+                        prev = note.pins[pind - 1];
+                        timeSince = pin.time - prev.time;
+                        let time;
+                        for (let step = 1; step < timeSince; step++) {
+                            lerpTime = step / timeSince;
+                            time = prev.time + step;
+                            if (allPins || allPinInserts.some(o => time % o === 0)) {
+                                note.pins.splice(pind, 0, Object.assign(Object.assign({}, prev), { interval: Math.round(prev.interval + lerpTime * (pin.interval - prev.interval)), size: Math.round(prev.size + lerpTime * (pin.size - prev.size)), time: prev.time + step }));
+                                pind++;
+                            }
                         }
                     }
                 }
-                let noteData = { min: Number.MAX_VALUE, max: Number.MIN_VALUE, avg: 0, prevVal: 0 };
-                note.pins.forEach(pin => {
-                    noteData.avg += pin.size;
-                    noteData.min = Math.min(noteData.min, pin.size);
-                    noteData.max = Math.max(noteData.max, pin.size);
-                });
-                noteData.avg /= note.pins.length;
-                if (data.volAdd || data.volMult) {
+                let indexToPass;
+                if (data.affect === 'vol') {
                     endNums = [noteEndNum, note.pins.length - 1, pattern.notes[endIndex].end - pattern.notes[firstIndex].start];
                     for (let j = 0; j < note.pins.length; j++) {
                         notePinOrPitchRatio = j / endNums[1];
                         timeRatio = (note.start - pattern.notes[firstIndex].start + note.pins[j].time) / endNums[2];
                         ratios = [noteRatio, notePinOrPitchRatio, timeRatio];
-                        noteData.prevVal = (j !== 0) ? note.pins[j - 1].size : -1;
-                        volMultValue = (_c = getArrayValue(note.pins[j].size / volRange, ((_b = data.volMult) === null || _b === void 0 ? void 0 : _b.per) === 'note' ? i - firstIndex : j, ratios, endNums, data.volMult, noteData)) !== null && _c !== void 0 ? _c : volMultValue;
-                        volAddValue = (_e = getArrayValue(note.pins[j].size / volRange, ((_d = data.volAdd) === null || _d === void 0 ? void 0 : _d.per) === 'note' ? i - firstIndex : j, ratios, endNums, data.volAdd, noteData)) !== null && _e !== void 0 ? _e : volAddValue;
-                        note.pins[j].size *= volMultValue;
-                        note.pins[j].size = Math.round(note.pins[j].size + volAddValue * volRange);
+                        noteData.notePinSize.curr = note.pins[j].size;
+                        noteData.notePinInterval.curr = note.pins[j].interval;
+                        noteData.notePinSize.prev = (j !== 0)
+                            ? note.pins[j - 1].size : (prevNote)
+                            ? prevNote.pins[prevNote.pins.length - 1].size
+                            : -1;
+                        noteData.notePinInterval.prev = (j !== 0)
+                            ? note.pins[j - 1].interval : (prevNote)
+                            ? prevNote.pins[prevNote.pins.length - 1].interval
+                            : -1;
+                        indexToPass = data.per === 'note' ? i - firstIndex : j;
+                        multValue = (_a = getArrayValue(note.pins[j].size / volRange, indexToPass, ratios, endNums, data, data.mult, noteData)) !== null && _a !== void 0 ? _a : multValue;
+                        addValue = (_b = getArrayValue(note.pins[j].size / volRange, indexToPass, ratios, endNums, data, data.add, noteData)) !== null && _b !== void 0 ? _b : addValue;
+                        note.pins[j].size *= multValue;
+                        note.pins[j].size = Math.round(note.pins[j].size + addValue * volRange);
                         note.pins[j].size = Math.max(Math.min(note.pins[j].size, volRange), 0);
                     }
                 }
-                if (data.pitchAdd || data.pitchMult) {
+                else if (!isModChannel && data.affect === 'pitch') {
                     endNums = [noteEndNum, Math.max(note.pitches.length - 1, 1), pattern.notes[endIndex].end - pattern.notes[firstIndex].start];
                     timeRatio = (note.start - pattern.notes[firstIndex].start + note.pins[note.pins.length - 1].time) / endNums[2];
                     for (let j = 0; j < note.pitches.length; j++) {
                         notePinOrPitchRatio = j / endNums[1];
                         ratios = [noteRatio, notePinOrPitchRatio, timeRatio];
-                        pitchMultValue = (_g = getArrayValue(note.pitches[j], ((_f = data.pitchMult) === null || _f === void 0 ? void 0 : _f.per) === 'note' ? i - firstIndex : j, ratios, endNums, data.pitchMult, noteData)) !== null && _g !== void 0 ? _g : pitchMultValue;
-                        pitchAddValue = (_j = getArrayValue(note.pitches[j], ((_h = data.pitchAdd) === null || _h === void 0 ? void 0 : _h.per) === 'note' ? i - firstIndex : j, ratios, endNums, data.pitchAdd, noteData)) !== null && _j !== void 0 ? _j : pitchAddValue;
-                        note.pitches[j] = note.pitches[j] * pitchMultValue;
-                        note.pitches[j] = Math.round(note.pitches[j] + pitchAddValue);
+                        noteData.notePitch.curr = note.pitches[j];
+                        noteData.notePitch.prev = (j !== 0) ? note.pitches[j] : -1;
+                        indexToPass = data.per === 'note' ? i - firstIndex : j;
+                        multValue = (_c = getArrayValue(noteData.notePitch.curr, indexToPass, ratios, endNums, data, data.mult, noteData)) !== null && _c !== void 0 ? _c : multValue;
+                        addValue = (_d = getArrayValue(noteData.notePitch.curr, indexToPass, ratios, endNums, data, data.add, noteData)) !== null && _d !== void 0 ? _d : addValue;
+                        note.pitches[j] *= multValue;
+                        note.pitches[j] = Math.round(note.pitches[j] + addValue);
                         note.pitches[j] = Math.max(Math.min(note.pitches[j], pitchLimit), 0);
                     }
                     note.pitches = [...new Set(note.pitches)];
-                    const bounds = getVerticalBounds([note], note.start, note.end);
-                    const underBy = -Math.min(bounds.min, 0);
-                    const overBy = Math.max(bounds.max - pitchLimit, 0);
-                    note.pins.forEach(pin => { pin.interval = Math.min(Math.max(pin.interval + underBy - overBy, 0), pitchLimit); });
+                    let indLow = -1;
+                    let indHi = -1;
+                    note.pitches.forEach((pitch, index) => {
+                        if (indLow === -1 || pitch < note.pitches[indLow]) {
+                            indLow = index;
+                        }
+                        if (indHi === -1 || pitch > note.pitches[indHi]) {
+                            indHi = index;
+                        }
+                    });
+                    note.pins.forEach(pin => {
+                        if (note.pitches[indLow] + pin.interval < 0) {
+                            pin.interval += Math.abs(note.pitches[indLow] + pin.interval);
+                        }
+                        if (note.pitches[indHi] + pin.interval > pitchLimit) {
+                            pin.interval -= (note.pitches[indHi] + pin.interval - pitchLimit);
+                        }
+                    });
                 }
-                if (data.volAdd || data.volMult) {
+                else if (!isModChannel && data.affect === 'bends') {
+                    endNums = [noteEndNum, note.pins.length - 1, pattern.notes[endIndex].end - pattern.notes[firstIndex].start];
+                    let indLow = -1;
+                    let indHi = -1;
+                    let basePitchShift = 0;
+                    for (let j = 0; j < note.pitches.length; j++) {
+                        const origValue = note.pitches[j];
+                        if (j === 0) {
+                            timeRatio = (note.start - pattern.notes[firstIndex].start + note.pins[0].time) / endNums[2];
+                            ratios = [noteRatio, 0, timeRatio];
+                            indexToPass = data.per === 'note' ? i - firstIndex : 0;
+                            noteData.notePinSize.curr = note.pins[j].size;
+                            noteData.notePinInterval.curr = note.pins[j].interval;
+                            noteData.notePinSize.prev = (_e = prevNote === null || prevNote === void 0 ? void 0 : prevNote.pins[prevNote.pins.length - 1].size) !== null && _e !== void 0 ? _e : -1;
+                            noteData.notePinInterval.prev = (_f = prevNote === null || prevNote === void 0 ? void 0 : prevNote.pins[prevNote.pins.length - 1].interval) !== null && _f !== void 0 ? _f : -1;
+                            addValue = (_g = getArrayValue(0, indexToPass, ratios, endNums, data, data.add, noteData)) !== null && _g !== void 0 ? _g : addValue;
+                        }
+                        note.pitches[j] = Math.round(note.pitches[j] + addValue);
+                        note.pitches[j] = Math.max(Math.min(note.pitches[j], pitchLimit), 0);
+                        if (j === 0) {
+                            basePitchShift = note.pitches[0] - origValue;
+                        }
+                        if (indLow === -1 || note.pitches[j] < note.pitches[indLow]) {
+                            indLow = j;
+                        }
+                        if (indHi === -1 || note.pitches[j] > note.pitches[indHi]) {
+                            indHi = j;
+                        }
+                    }
+                    note.pitches = [...new Set(note.pitches)];
+                    for (let j = 1; j < note.pins.length; j++) {
+                        notePinOrPitchRatio = j / endNums[1];
+                        timeRatio = (note.start - pattern.notes[firstIndex].start + note.pins[j].time) / endNums[2];
+                        ratios = [noteRatio, notePinOrPitchRatio, timeRatio];
+                        noteData.notePinSize.curr = note.pins[j].size;
+                        noteData.notePinInterval.curr = note.pins[j].interval;
+                        noteData.notePinSize.prev = note.pins[j - 1].size;
+                        noteData.notePinInterval.prev = note.pins[j - 1].interval;
+                        indexToPass = data.per === 'note' ? i - firstIndex : j;
+                        multValue = (_h = getArrayValue(note.pins[j].interval, indexToPass, ratios, endNums, data, data.mult, noteData)) !== null && _h !== void 0 ? _h : multValue;
+                        addValue = (_j = getArrayValue(note.pins[j].interval, indexToPass, ratios, endNums, data, data.add, noteData)) !== null && _j !== void 0 ? _j : addValue;
+                        note.pins[j].interval = Math.round(note.pins[j].interval * multValue + addValue - basePitchShift);
+                        if (note.pitches[indLow] + note.pins[j].interval < 0) {
+                            note.pins[j].interval += Math.abs(note.pitches[indLow] + note.pins[j].interval);
+                        }
+                        if (note.pitches[indHi] + note.pins[j].interval > pitchLimit) {
+                            note.pins[j].interval -= (note.pitches[indHi] + note.pins[j].interval - pitchLimit);
+                        }
+                    }
+                }
+                if (data.affect === 'vol' || data.affect === 'bends') {
                     removeRedundantPins(note.pins);
-                }
-            }
-            if (!data.pitchAdd && !data.pitchMult) {
-                if (intersects.L !== -1) {
-                    this.append(new ChangeMergeAcross(doc, pattern, pattern.notes[intersects.L].start, pattern.notes[intersects.L + 1].end));
-                    intersects.R--;
-                }
-                if (intersects.R > -1) {
-                    this.append(new ChangeMergeAcross(doc, pattern, pattern.notes[intersects.R - 1].start, pattern.notes[intersects.R].end));
+                    if (!isModChannel) {
+                        if (intersects.L !== -1) {
+                            this.append(new ChangeMergeAcross(doc, pattern, pattern.notes[intersects.L].start, pattern.notes[intersects.L + 1].end, pitchIndex));
+                            intersects.R--;
+                        }
+                        if (intersects.R > -1) {
+                            this.append(new ChangeMergeAcross(doc, pattern, pattern.notes[intersects.R - 1].start, pattern.notes[intersects.R].end, pitchIndex));
+                        }
+                    }
                 }
             }
             doc.notifier.changed();
@@ -35116,28 +35326,29 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeSpreadAcross extends ChangeSequence {
-        constructor(doc, pattern, x1, x2) {
+        constructor(doc, pattern, x1, x2, pitchIndex) {
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length === 0) {
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length === 0) {
                 return;
             }
             if (x1 !== 0) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
             }
             if (x2 !== doc.song.partsPerPattern) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
             }
             let note;
             let totalSpace = 0;
             let firstIndex = -1;
             let finalIndex = -1;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                note = notesArray[i];
                 if (note.end <= x1) {
                     continue;
                 }
@@ -35150,20 +35361,20 @@ You should be redirected to the song at:<br /><br />
                     totalSpace += note.start - x1;
                 }
                 else {
-                    totalSpace += note.start - pattern.notes[i - 1].end;
+                    totalSpace += note.start - notesArray[i - 1].end;
                 }
             }
             if (finalIndex === -1) {
-                finalIndex = pattern.notes.length - 1;
+                finalIndex = notesArray.length - 1;
             }
-            totalSpace += x2 - pattern.notes[finalIndex].end;
+            totalSpace += x2 - notesArray[finalIndex].end;
             if (totalSpace === 0) {
                 return;
             }
             const spaceBetween = totalSpace / (finalIndex - firstIndex);
-            this.append(new ChangeStackLeftAcross(doc, pattern, x1, x2));
+            this.append(new ChangeStackLeftAcross(doc, pattern, x1, x2, pitchIndex));
             for (let i = firstIndex; i < finalIndex + 1; i++) {
-                note = pattern.notes[i];
+                note = notesArray[i];
                 if (i === firstIndex) {
                     if (firstIndex === finalIndex) {
                         note.start += Math.round(totalSpace / 2);
@@ -35203,7 +35414,7 @@ You should be redirected to the song at:<br /><br />
             let note;
             let noteCount = 0;
             let indices = {};
-            let vertBounds = { min: Number.MAX_VALUE, max: Number.MIN_VALUE };
+            let vertBounds = { min: Number.MAX_SAFE_INTEGER, max: Number.MIN_SAFE_INTEGER };
             let notePitches = [];
             let slope = 0;
             for (let i = 0; i < pattern.notes.length; i++) {
@@ -35272,15 +35483,16 @@ You should be redirected to the song at:<br /><br />
             this._didSomething();
         }
     }
-    class ChangeTapNotesAcross extends ChangeSequence {
+    class ChangeStackBottomAcross extends ChangeSequence {
         constructor(doc, pattern, x1, x2) {
+            var _a;
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length === 0) {
+            if (pattern.notes.length <= 1) {
                 return;
             }
             if (x1 !== 0) {
@@ -35289,16 +35501,94 @@ You should be redirected to the song at:<br /><br />
             if (x2 !== doc.song.partsPerPattern) {
                 this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
             }
+            let note;
+            let noteCount = 0;
+            let indices = {};
+            let vertBounds = { min: Number.MAX_SAFE_INTEGER, max: Number.MIN_SAFE_INTEGER };
+            let notePitches = [];
+            for (let i = 0; i < pattern.notes.length; i++) {
+                note = pattern.notes[i];
+                if (note.end <= x1) {
+                    continue;
+                }
+                if (note.start >= x2) {
+                    break;
+                }
+                noteCount++;
+                indices = { start: (_a = indices.start) !== null && _a !== void 0 ? _a : i, end: i };
+                notePitches[i - indices.start] = getVerticalBounds([note], note.start, note.end);
+                vertBounds = {
+                    min: Math.min(vertBounds.min, notePitches[i - indices.start].min),
+                    max: Math.max(vertBounds.max, notePitches[i - indices.start].max)
+                };
+            }
+            if (noteCount < 2) {
+                return;
+            }
+            if (vertBounds.max === vertBounds.min) {
+                return;
+            }
+            let targetPitch;
+            let nearestEdgeToTarget;
+            let offset;
+            for (let i = indices.start; i <= indices.end; i++) {
+                note = pattern.notes[i];
+                targetPitch = vertBounds.min;
+                let range = notePitches[i - indices.start];
+                nearestEdgeToTarget =
+                    ((range.min >= targetPitch) ? range.min
+                        : (targetPitch >= range.max) ? range.max
+                            : range.min + (range.max - range.min) / 2);
+                offset = targetPitch - nearestEdgeToTarget;
+                let overageLow = 0;
+                let overageHigh = 0;
+                note.pitches = note.pitches.map((pitch) => {
+                    pitch = Math.round(pitch + offset);
+                    if (pitch > vertBounds.max) {
+                        overageHigh = Math.max(overageHigh, pitch - vertBounds.max);
+                        pitch = vertBounds.max;
+                    }
+                    else if (pitch < vertBounds.min) {
+                        overageLow = Math.max(overageLow, vertBounds.min - pitch);
+                        pitch = vertBounds.min;
+                    }
+                    return pitch;
+                });
+                note.pitches = note.pitches.map((pitch) => pitch - overageHigh + overageLow);
+                note.pitches = [...new Set(note.pitches)];
+            }
+            doc.notifier.changed();
+            this._didSomething();
+        }
+    }
+    class ChangeTapNotesAcross extends ChangeSequence {
+        constructor(doc, pattern, x1, x2, pitchIndex) {
+            super();
+            x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
+            x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
+            if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
+                return;
+            }
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length === 0) {
+                return;
+            }
+            if (x1 !== 0) {
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
+            }
+            if (x2 !== doc.song.partsPerPattern) {
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
+            }
             let canTapLeft;
             let canTapRight;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                const note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                const note = notesArray[i];
                 if (note.start < x2 && note.end > x1) {
                     canTapLeft = note.start > x1
-                        && (i == 0 || note.start - pattern.notes[i - 1].end > 0);
+                        && (i == 0 || note.start - notesArray[i - 1].end > 0);
                     canTapRight = note.end < x2
                         && note.end < doc.song.partsPerPattern
-                        && (i === pattern.notes.length - 1 || pattern.notes[i + 1].start - note.end > 0);
+                        && (i === notesArray.length - 1 || notesArray[i + 1].start - note.end > 0);
                     if (canTapLeft && Math.random() >= 0.5) {
                         note.start--;
                         note.end--;
@@ -35314,29 +35604,30 @@ You should be redirected to the song at:<br /><br />
         }
     }
     class ChangeMirrorHorizontal extends ChangeSequence {
-        constructor(doc, pattern, inPlace, x1, x2) {
+        constructor(doc, pattern, inPlace, x1, x2, pitchIndex) {
             super();
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
             x2 !== null && x2 !== void 0 ? x2 : (x2 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionEnd : doc.song.partsPerPattern);
             if (x1 < 0 || x2 <= x1 || x2 > doc.song.partsPerPattern) {
                 return;
             }
-            if (pattern.notes.length === 0) {
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
+            if (notesArray.length === 0) {
                 return;
             }
             if (x1 !== 0) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
             }
             if (x2 !== doc.song.partsPerPattern) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
             }
             let note;
-            const firstNote = pattern.notes[0].clone();
+            const firstNote = notesArray[0].clone();
             let startDist;
             let endDist;
             const center = (x1 + x2) / 2;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                note = notesArray[i];
                 if (note.end <= x1) {
                     continue;
                 }
@@ -35362,18 +35653,20 @@ You should be redirected to the song at:<br /><br />
                     note.end = note.start + note.pins[note.pins.length - 1].time;
                 }
             }
-            pattern.notes.sort((a, b) => a.start - b.start);
-            if (!inPlace && firstNote.start === 0
-                && pattern.notes[0].start === 0
-                && pattern.notes[0].pitches.every((pitch, index) => pitch === firstNote.pitches[index])) {
-                pattern.notes[0].continuesLastPattern = firstNote.continuesLastPattern;
+            pattern.notes.sort((a, b) => pitchIndex === undefined || (a.pitches.length === 1 && b.pitches.length === 1 && a.pitches[0] === b.pitches[0] && a.pitches[0] === pitchIndex)
+                ? a.start - b.start
+                : 0);
+            if (pitchIndex === undefined && !inPlace && firstNote.start === 0
+                && notesArray[0].start === 0
+                && notesArray[0].pitches.every((pitch, index) => pitch === firstNote.pitches[index])) {
+                notesArray[0].continuesLastPattern = firstNote.continuesLastPattern;
             }
             doc.notifier.changed();
             this._didSomething();
         }
     }
     class ChangeStretchHorizontal extends ChangeSequence {
-        constructor(doc, pattern, x1b, x2b, x1, x2) {
+        constructor(doc, pattern, x1b, x2b, x1, x2, pitchIndex) {
             super();
             x2b = Math.min(x2b, doc.song.partsPerPattern);
             x1 !== null && x1 !== void 0 ? x1 : (x1 = doc.selection.patternSelectionActive ? doc.selection.patternSelectionStart : 0);
@@ -35384,25 +35677,26 @@ You should be redirected to the song at:<br /><br />
                 return;
             }
             if (x1 !== 0) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
             }
             if (x2 !== doc.song.partsPerPattern) {
-                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
+                this.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
             }
             if (x2b < x1b) {
-                this.append(new ChangeMirrorHorizontal(doc, pattern, true, x1, x2));
+                this.append(new ChangeMirrorHorizontal(doc, pattern, true, x1, x2, pitchIndex));
                 [x1b, x2b] = [x2b, x1b];
             }
             const newNotes = [];
             const scaleFactor = (x2b - x1b) / (x2 - x1);
+            const notesArray = pitchIndex === undefined ? pattern.notes : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIndex);
             let note;
             let prevNote = null;
             let newNote;
             let oldRangeStart = -1, oldRangeEnd = -1;
             let newRangeStart = -1, newRangeEnd = -1;
             let minCompressedSize = 0;
-            for (let i = 0; i < pattern.notes.length; i++) {
-                note = pattern.notes[i];
+            for (let i = 0; i < notesArray.length; i++) {
+                note = notesArray[i];
                 if (note.start >= x2 && note.start >= x2b) {
                     break;
                 }
@@ -35448,13 +35742,13 @@ You should be redirected to the song at:<br /><br />
                 return;
             }
             if (oldRangeEnd === -1) {
-                oldRangeEnd = pattern.notes.length;
+                oldRangeEnd = notesArray.length;
             }
             if (newRangeEnd === -1) {
-                newRangeEnd = pattern.notes.length;
+                newRangeEnd = notesArray.length;
             }
-            const oldRangeToDelete = pattern.notes.slice(oldRangeStart, oldRangeEnd);
-            const newRangeToDelete = pattern.notes.slice(newRangeStart, newRangeEnd).filter((note) => !oldRangeToDelete.includes(note));
+            const oldRangeToDelete = notesArray.slice(oldRangeStart, oldRangeEnd);
+            const newRangeToDelete = notesArray.slice(newRangeStart, newRangeEnd).filter((note) => !oldRangeToDelete.includes(note));
             this.append(new ChangeNotesAdded(doc, pattern, oldRangeToDelete, []));
             this.append(new ChangeNotesAdded(doc, pattern, newRangeToDelete, newNotes));
             doc.notifier.changed();
@@ -35567,7 +35861,7 @@ You should be redirected to the song at:<br /><br />
         }
         return { min: absoluteMin, max: absoluteMax };
     }
-    function getIntersects(doc, pattern, x1, x2, appendSplits) {
+    function getIntersects(doc, pattern, x1, x2, pitchIndex, appendSplits) {
         const indices = { L: -1, R: -1 };
         for (let i = 0; i < pattern.notes.length; i++) {
             if (indices.L === -1 && (pattern.notes[i].start < x1 && pattern.notes[i].end > x1)) {
@@ -35580,10 +35874,10 @@ You should be redirected to the song at:<br /><br />
         }
         if (appendSplits) {
             if (indices.L !== -1) {
-                appendSplits.append(new ChangeSplitNotesAtPoint(doc, pattern, x1));
+                appendSplits.append(new ChangeSplitNotesAtPoint(doc, pattern, x1, pitchIndex));
             }
             if (indices.R !== -1) {
-                appendSplits.append(new ChangeSplitNotesAtPoint(doc, pattern, x2));
+                appendSplits.append(new ChangeSplitNotesAtPoint(doc, pattern, x2, pitchIndex));
             }
             if (indices.R !== -1) {
                 indices.R += (indices.L !== -1) ? 2 : 1;
@@ -37937,18 +38231,75 @@ You should be redirected to the song at:<br /><br />
         }
     }
 
-    const { button: button$c, div: div$c, label: label$1, input: input$7, option: option$9, select: select$9 } = HTML;
-    const stepFunctionCategories = {
-        Invert: 'Invert',
-        Stagger: 'Stagger',
-        Ramp: 'Ramp',
-        Wave: 'Wave',
-        Custom: 'Custom'
+    const { button: button$c, div: div$c, label: label$1, input: input$7, option: option$9, optgroup: optgroup$2, select: select$9 } = HTML;
+    var funcSpecialPresets;
+    (function (funcSpecialPresets) {
+        funcSpecialPresets[funcSpecialPresets["TapNotes"] = 0] = "TapNotes";
+    })(funcSpecialPresets || (funcSpecialPresets = {}));
+    const funcSpecialPresetsMap = {
+        'Naturalize note positions': funcSpecialPresets.TapNotes,
+    };
+    const wave = (f1, f2, amp) => `(sin(pi/(${f1} + num/len*(${f2}-${f1})) * num)*${amp} + 1) / 2`;
+    const funcVolPresets = {
+        'Fade out every note': { affect: 'vol', per: 'pin', mult: ['1 - num / len'], onlyExistingPins: true },
+        'Wobble slow': { affect: 'vol', per: 'time', mult: [wave(16, 16, 0.5)] },
+        'Wobble slow to medium': { affect: 'vol', per: 'time', mult: [wave(16, 8, 0.5)] },
+        'Wobble slow to fast': { affect: 'vol', per: 'time', mult: [wave(16, 4, 0.5)] },
+        'Wobble medium to slow': { affect: 'vol', per: 'time', mult: [wave(8, 16, 0.5)] },
+        'Wobble medium': { affect: 'vol', per: 'time', mult: [wave(8, 8, 0.5)] },
+        'Wobble medium to fast': { affect: 'vol', per: 'time', mult: [wave(8, 4, 0.5)] },
+        'Wobble fast to slow': { affect: 'vol', per: 'time', mult: [wave(4, 16, 0.5)] },
+        'Wobble fast to medium': { affect: 'vol', per: 'time', mult: [wave(4, 8, 0.5)] },
+        'Wobble fast': { affect: 'vol', per: 'time', mult: [wave(4, 4, 0.5)] },
+        'Raise by 1': { affect: 'vol', per: 'pin', add: [1], onlyExistingPins: true },
+        'Lower by 1': { affect: 'vol', per: 'pin', add: [-1], onlyExistingPins: true },
+        'Double contrast': { affect: 'vol', per: 'pin', add: ['((x - avg) * 2) * (maxrange - minrange)'], onlyExistingPins: true },
+        'Halve contrast': { affect: 'vol', per: 'pin', add: ['((x - avg) * -0.5) * (maxrange - minrange)'], onlyExistingPins: true },
+        'Stagger volume': { affect: 'vol', per: 'note', add: ['(num % 2 === 0 ? 1 : -1)'], onlyExistingPins: true },
+        'Invert': { affect: 'vol', per: 'pin', add: ['(1 - x - x) * (maxrange - minrange)'], onlyExistingPins: true },
+        'Flip': { affect: 'vol', per: 'pin', add: ['((x - avg) * -2) * (maxrange - minrange)'], onlyExistingPins: true },
+        'Random quiver': { affect: 'vol', per: 'time', mult: ['random() > 0.5 ? 0.5 : 1'] },
+        'Random quiver at ends': { affect: 'vol', per: 'time', add: ['(random() > 0.5 ? -(maxrange-minrange) : 0) * (num/len)'] },
+    };
+    const funcPitchPresets = {
+        'Stagger pitch': { affect: 'pitch', per: 'note', add: [-1, 1] },
+        'Stagger 1:2': { affect: 'pitch', per: 'note', add: [1, 0, 0] },
+        'Stagger 1:3': { affect: 'pitch', per: 'note', add: [1, 0, 0, 0] },
+        'Stagger 2:1': { affect: 'pitch', per: 'note', add: [1, 1, 0] },
+        'Stagger 3:1': { affect: 'pitch', per: 'note', add: [1, 1, 1, 0] },
+        'Staircase up': { affect: 'pitch', per: 'note', add: ['num'] },
+        'Staircase down': { affect: 'pitch', per: 'note', add: ['-num'] },
+        'Shift notes': { affect: 'pitch', per: 'time', add: ['random()'] },
+        'Align center': { affect: 'pitch', add: ['pitchesavg - pitch'] },
+        'Align invert': { affect: 'pitch', add: ['2 * (pitchesavg - pitch)'] },
+        'Fade to top': { affect: 'pitch', add: ['(pitchesmax - pitch) * (num/len)'] },
+        'Fade to center': { affect: 'pitch', add: ['(pitchesavg - pitch) * (num/len)'] },
+        'Fade to center + bend': { affect: 'bends', per: 'time', add: ['(pitchesavg - pitch) * (num/len)'], onlyExistingPins: true },
+        'Fade to bottom': { affect: 'pitch', add: ['(pitchesmin - pitch) * (num/len)'] },
+        'More contrast': { affect: 'pitch', add: ['sign(pitch - pitchesavg)'] },
+        'Less contrast': { affect: 'pitch', add: ['sign(pitchesavg - pitch)'] },
+    };
+    const funcBendsPresets = {
+        'Bend notes to avg pitch': { affect: 'bends', per: 'pin', type: 'stretch', add: [0, 'pitchesavg - pitch - x'], onlyExistingPins: true },
+        'Tremolo slow': { affect: 'bends', per: 'time', add: [wave(16, 16, 0.5)] },
+        'Tremolo slow to medium': { affect: 'bends', per: 'time', add: [wave(16, 8, 0.5)] },
+        'Tremolo slow to fast': { affect: 'bends', per: 'time', add: [wave(16, 4, 0.5)] },
+        'Tremolo medium to slow': { affect: 'bends', per: 'time', add: [wave(8, 16, 0.5)] },
+        'Tremolo medium': { affect: 'bends', per: 'time', add: [wave(8, 8, 0.5)] },
+        'Tremolo medium to fast': { affect: 'bends', per: 'time', add: [wave(8, 4, 0.5)] },
+        'Tremolo fast to slow': { affect: 'bends', per: 'time', add: [wave(4, 16, 0.5)] },
+        'Tremolo fast to medium': { affect: 'bends', per: 'time', add: [wave(4, 8, 0.5)] },
+        'Tremolo fast': { affect: 'bends', per: 'time', add: [wave(4, 4, 0.5)] },
+        'Tremolo max': { affect: 'bends', per: 'pin', add: [-1, 1] },
+        'Random bends': { affect: 'bends', per: 'pin', add: ['random() > 0.95 ? 1 : 0'] },
     };
     class EditorTabSelection {
         constructor(doc, patternEditor, tipHandler) {
-            this._stepFunction = () => { };
-            this._stepFunctionCurried = () => { this._stepFunction(); };
+            this._specialFunction = () => { };
+            this._specialFunctionCurried = () => { this._specialFunction(); };
+            this._functionTargetsPitch = false;
+            this._monitoredChannel = -1;
+            this._rememberDisabledValues = [];
             this._whenSelectionModeChanged = (type) => {
                 [
                     { type: SelectionMode.Move, obj: this._selectionModeMoveLabel },
@@ -37967,84 +38318,74 @@ You should be redirected to the song at:<br /><br />
                 this._selectionModeLabel.innerText = (type === SelectionMode.Move) ? "Move mode" : "Stretch mode";
             };
             this._whenSettingButtonClicked = (event) => {
+                const modTrackIndex = Config.modCount - this._affectModChannelNum.valueAsNumber;
                 if (event.target === this._merge) {
-                    this._doc.selection.noteMerge(!this._mergeAll.checked);
+                    this._doc.selection.noteMerge(!this._mergeAll.checked, modTrackIndex);
                 }
                 else if (event.target === this._bridge) {
-                    this._doc.selection.noteBridge(this._bridgeBend.checked);
+                    this._doc.selection.noteBridge(this._bridgeGrow.checked, this._bridgeBend.checked, modTrackIndex);
                 }
                 else if (event.target === this._spread) {
-                    this._doc.selection.noteSpreadAcross(this._spreadPitch.checked);
+                    this._doc.selection.noteSpreadAcross(this._spreadPitch.checked, this._spreadStack.checked, modTrackIndex);
                 }
                 else if (event.target === this._flatten) {
-                    this._doc.selection.noteFlattenAcross(this._patternEditor, !this._flattenPitch.checked, this._flattenVolume.checked);
+                    this._doc.selection.noteFlattenAcross(!this._flattenPitch.checked, this._flattenVolume.checked, modTrackIndex);
                 }
                 else if (event.target === this._mirrorH) {
-                    this._doc.selection.noteMirrorAcross(false);
+                    this._doc.selection.noteMirrorAcross(false, modTrackIndex);
                 }
                 else if (event.target === this._mirrorV) {
-                    this._doc.selection.noteMirrorAcross(true);
+                    this._doc.selection.noteMirrorAcross(true, modTrackIndex);
                 }
                 else if (event.target === this._split) {
-                    this._doc.selection.noteSplitAcross(Number(this._splitSlider.input.value), this._splitAbsolute.checked, !this._splitAcross.checked);
+                    this._doc.selection.noteSplitAcross(Number(this._splitSlider.input.value), this._splitAbsolute.checked, !this._splitAcross.checked, modTrackIndex);
                 }
                 else if (event.target === this._volUp) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'volume double');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'pin', add: ['x <= (1 / (maxrange - minrange) + 0.001) ? 1 / (maxrange - minrange) : x'], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volDown) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'volume halve');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'pin', add: ['x <= (1 / (maxrange - minrange) + 0.001) ? -x : -x/2'], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volFadeOut) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'fade out');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'time', mult: [1, 0], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volFadeIn) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'fade in');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'time', mult: [0, 1], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volGainEnd) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'gain end');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'time', type: 'stretch', add: [0, '(x <= (1 / (maxrange - minrange) + 0.001) ? 1 / (maxrange - minrange) : 0) + ((((x / high * (1 - high)) * (maxrange - minrange))) / (maxrange - minrange))'], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volGainStart) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'gain start');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', per: 'time', type: 'stretch', add: ['(x <= (1 / (maxrange - minrange) + 0.001) ? 1 / (maxrange - minrange) : 0) + ((((x / high * (1 - high)) * (maxrange - minrange))) / (maxrange - minrange))', 0], onlyExistingPins: true }, modTrackIndex);
                 }
                 else if (event.target === this._volStudioFadeOut) {
                     const isModChannel = this._doc.song.getChannelIsMod(this._doc.channel);
-                    this._doc.selection.noteStepAcross(this._patternEditor, isModChannel ? 'mod-studio fade out' : 'studio fade out');
+                    this._doc.selection.noteStepAcross(isModChannel
+                        ? { affect: 'vol', per: 'time', mult: ['1 - pow(num / (len - 1), 2)'] }
+                        : { affect: 'vol', per: 'time', mult: [1, 0.5625, 0.25, 0.0625, 0] }, modTrackIndex);
                 }
                 else if (event.target === this._volStudioFadeIn) {
                     const isModChannel = this._doc.song.getChannelIsMod(this._doc.channel);
-                    this._doc.selection.noteStepAcross(this._patternEditor, isModChannel ? 'mod-studio fade in' : 'studio fade in');
+                    this._doc.selection.noteStepAcross(isModChannel
+                        ? { affect: 'vol', per: 'time', mult: ['pow(num / (len - 1), 2)'] }
+                        : { affect: 'vol', per: 'time', mult: [0, 0.0625, 0.25, 0.5625, 1] }, modTrackIndex);
                 }
                 else if (event.target === this._volContrastMax) {
-                    this._doc.selection.noteStepAcross(this._patternEditor, 'max contrast');
+                    this._doc.selection.noteStepAcross({ affect: 'vol', type: 'stretch', per: 'pin', add: ['((((x / high * (1 - high)) * (maxrange - minrange))) / (maxrange - minrange))'], onlyExistingPins: true }, modTrackIndex);
                 }
             };
-            this._setStepFunction = () => {
-                var _a;
-                switch (this._stepFunctionSelect.value) {
-                    case stepFunctionCategories.Invert:
-                        this._getInvertFunctionGUI();
-                        break;
-                    case stepFunctionCategories.Stagger:
-                        this._getStaggerFunctionGUI();
-                        break;
-                    case stepFunctionCategories.Ramp:
-                        break;
-                    case stepFunctionCategories.Wave:
-                        break;
-                    case stepFunctionCategories.Custom:
-                        break;
-                    default:
-                        (_a = this._stepFunctionParameterGroup) === null || _a === void 0 ? void 0 : _a.replaceChildren();
-                        break;
-                }
-                this._stepFunctionRun.removeEventListener("click", this._stepFunctionCurried);
-                this._stepFunctionRun.addEventListener("click", this._stepFunctionCurried);
-                if (!!stepFunctionCategories[this._stepFunctionSelect.value]) {
-                    this._stepFunctionRun.removeAttribute("disabled");
+            this._setFunction = () => {
+                var _a, _b;
+                const specialFunction = funcSpecialPresetsMap[this._functionSelect.value];
+                if (specialFunction !== undefined) {
+                    this._setSpecialFunction(specialFunction);
                 }
                 else {
-                    this._stepFunctionRun.setAttribute("disabled", "true");
+                    this._getStepFunctionGUI((_b = (_a = funcVolPresets[this._functionSelect.value]) !== null && _a !== void 0 ? _a : funcPitchPresets[this._functionSelect.value]) !== null && _b !== void 0 ? _b : funcBendsPresets[this._functionSelect.value]);
                 }
+                this._functionRun.removeEventListener("click", this._specialFunctionCurried);
+                this._functionRun.addEventListener("click", this._specialFunctionCurried);
+                this._updateFunctionDisabled();
             };
             this._updateSplitSliderParts = (source) => () => {
                 const newValue = source.valueAsNumber;
@@ -38063,10 +38404,58 @@ You should be redirected to the song at:<br /><br />
                                 ? `Split notes per ${newValue} parts`
                                 : `Split across per ${newValue} parts`;
             };
+            this._monitorChannelType = () => {
+                if (this._monitoredChannel !== this._doc.channel) {
+                    const incompatCheckboxes = [this._mergeAll, this._bridgeBend, this._spreadPitch, this._flattenPitch, this._flattenVolume];
+                    const incompatWithModulation = [this._mirrorV, ...incompatCheckboxes];
+                    if (this._doc.song.getChannelIsMod(this._doc.channel)) {
+                        incompatWithModulation.forEach(el => {
+                            var _a;
+                            if (document.activeElement === el) {
+                                (_a = document.querySelector('button.noteOpMerge')) === null || _a === void 0 ? void 0 : _a.focus();
+                            }
+                            el.setAttribute("disabled", "true");
+                        });
+                        this._affectModChannelContainer.style.display = "";
+                        if (this._rememberDisabledValues.length === 0) {
+                            incompatCheckboxes.forEach(chkbx => {
+                                this._rememberDisabledValues.push({ chkbx, val: chkbx.checked });
+                                if (chkbx === this._flattenVolume) {
+                                    chkbx.checked = true;
+                                }
+                                else {
+                                    chkbx.checked = false;
+                                }
+                            });
+                        }
+                    }
+                    else {
+                        incompatWithModulation.forEach(el => el.removeAttribute("disabled"));
+                        this._rememberDisabledValues.forEach(entry => entry.chkbx.checked = entry.val);
+                        this._rememberDisabledValues = [];
+                        this._affectModChannelContainer.style.display = "none";
+                    }
+                    this._updateFunctionDisabled();
+                    this._monitoredChannel = this._doc.channel;
+                }
+            };
+            this._updateFunctionDisabled = () => {
+                if ((this._doc.song.getChannelIsMod(this._doc.channel) && this._functionTargetsPitch) ||
+                    (!Object.hasOwn(funcSpecialPresetsMap, this._functionSelect.value) &&
+                        !Object.hasOwn(funcVolPresets, this._functionSelect.value) &&
+                        !Object.hasOwn(funcPitchPresets, this._functionSelect.value) &&
+                        !Object.hasOwn(funcBendsPresets, this._functionSelect.value))) {
+                    this._functionRun.setAttribute("disabled", "true");
+                }
+                else {
+                    this._functionRun.removeAttribute("disabled");
+                }
+            };
             this._doc = doc;
             this._patternEditor = patternEditor;
             this._tipHandler = tipHandler;
             this._constructHTML();
+            this._doc.notifier.watch(this._monitorChannelType);
         }
         _constructHTML() {
             const _selectionOpsDescription = div$c({ style: `padding: 3px 0; max-width: 15em; text-align: center; color: ${ColorConfig.secondaryText};` }, "Selection");
@@ -38076,11 +38465,15 @@ You should be redirected to the song at:<br /><br />
             const _selectionModeBtnStretch = input$7({ type: "radio", name: "selection-mode-radio-group", class: "tab-settings-radio" });
             this._selectionModeStretchLabel = div$c({ class: "tab-settings-radio" }, "↔");
             const _selectionModeButtonsGroup = div$c({ class: "tab-settings-buttons-group", style: "margin-bottom: 0.4rem;" }, div$c({ class: "tab-settings-radiodiv" }, _selectionModeBtnMove, this._selectionModeMoveLabel), div$c({ class: "tab-settings-radiodiv" }, _selectionModeBtnStretch, this._selectionModeStretchLabel));
+            this._affectModChannelNum = input$7({ type: "number", step: "1", min: 1, max: Config.modCount, value: "1" });
+            this._affectModChannelContainer = div$c({ class: "selectionOps-action" }, this._affectModChannelNum, div$c({ class: "tip", onclick: () => this._tipHandler("selectionModTarget") }, "Mod Track #"));
             this._merge = button$c({ class: "selectionOps-actionbutton noteOpMerge" });
             this._mergeAll = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._bridge = button$c({ class: "selectionOps-actionbutton noteOpBridge" });
+            this._bridgeGrow = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._bridgeBend = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._spread = button$c({ class: "selectionOps-actionbutton noteOpSpread" });
+            this._spreadStack = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._spreadPitch = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._mirrorH = button$c({ class: "selectionOps-actionbutton noteOpMirror" });
             this._mirrorV = button$c({ class: "selectionOps-actionbutton noteOpMirror", style: 'transform: rotate(90deg);' });
@@ -38101,34 +38494,36 @@ You should be redirected to the song at:<br /><br />
             this._volStudioFadeOut = button$c({ class: "selectionOps-actionbutton noteOpVolCrossfade" });
             this._volStudioFadeIn = button$c({ class: "selectionOps-actionbutton noteOpVolCrossfade", style: 'transform: scaleX(-1);' });
             this._volContrastMax = button$c({ class: "selectionOps-actionbutton noteOpVolContrastMax" });
-            this._stepFunctionSelect = select$9();
-            const defaultOption = "Choose...";
-            this._stepFunctionSelect.appendChild(option$9({ value: defaultOption, selected: 'selected' }, defaultOption));
-            (Object.keys(stepFunctionCategories))
-                .forEach((key) => this._stepFunctionSelect.appendChild(option$9({ value: key }, key)));
-            this._stepFunctionSelect.addEventListener('change', this._setStepFunction);
-            this._stepFunctionRun = button$c({ class: "selectionOps-actionbutton noteOpFunction" });
-            this._stepFunctionRun.addEventListener("click", this._stepFunction);
-            this._setStepFunction();
+            this._functionSelect = select$9();
+            this._functionSelect.appendChild(option$9({ value: "Choose...", selected: 'selected' }, "Choose..."));
+            this._functionSelect.appendChild(optgroup$2({ label: "Special" }, ...(Object.keys(funcSpecialPresetsMap).map((key) => option$9({ value: key }, key)))));
+            this._functionSelect.appendChild(optgroup$2({ label: "Volume Presets" }, ...(Object.keys(funcVolPresets).map((key) => option$9({ value: key }, key)))));
+            this._functionSelect.appendChild(optgroup$2({ label: "Pitch Presets" }, ...(Object.keys(funcPitchPresets).map((key) => option$9({ value: key }, key)))));
+            this._functionSelect.appendChild(optgroup$2({ label: "Pitch bend Presets" }, ...(Object.keys(funcBendsPresets).map((key) => option$9({ value: key }, key)))));
+            this._functionSelect.addEventListener('change', this._setFunction);
+            this._functionRun = button$c({ class: "selectionOps-actionbutton noteOpFunction" });
+            this._functionRun.addEventListener("click", this._specialFunction);
+            this._setFunction();
             this._splitSliderInputBox = input$7({ type: "number", step: "1", min: 1, max: Math.floor(this._doc.song.partsPerPattern / 2), value: "1" });
             this._splitSlider = new Slider(input$7({ title: "cuts", style: "width: 6rem; flex-grow: 1; margin-left: 0.5rem;", type: "range", min: "1", max: String(Math.floor(this._doc.song.partsPerPattern / 2)), value: "1", step: "1" }), this._doc, null, false);
             this._splitAcross = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._splitAbsolute = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._splitDropdownGroup = div$c({ class: "editor-controls", style: "display: none;" }, div$c({ class: "selectionOps-row-inside" }, this._splitSliderInputBox, this._splitSlider.container), div$c({ class: "selectionOps-row-inside" }, label$1({ class: "checkbox-container" }, this._splitAcross, "Across"), label$1({ class: "checkbox-container" }, this._splitAbsolute, "Absolute")));
             this._volDropdownGroup = div$c({ class: "editor-controls", style: "display: none;" }, div$c({ class: "selectionOps-action" }, this._volGainEnd, this._volGainStart, this._volStudioFadeOut, this._volStudioFadeIn, this._volContrastMax));
-            this._stepFunctionParameterGroup = div$c();
+            this._functionParameterGroup = div$c();
             const _selectionOps = [
+                this._affectModChannelContainer,
                 div$c({ class: "selectionOps-action" }, this._merge, div$c({ class: "tip", onclick: () => this._tipHandler("selectionMerge") }, "Merge"), label$1({ class: "checkbox-container" }, this._mergeAll, "All")),
-                div$c({ class: "selectionOps-action" }, this._bridge, div$c({ class: "tip", onclick: () => this._tipHandler("selectionBridge") }, "Bridge"), label$1({ class: "checkbox-container" }, this._bridgeBend, "Bend")),
-                div$c({ class: "selectionOps-action" }, this._spread, div$c({ class: "tip", onclick: () => this._tipHandler("selectionSpread") }, "Spread"), label$1({ class: "checkbox-container" }, this._spreadPitch, "Pitch")),
+                div$c({ class: "selectionOps-action" }, this._bridge, div$c({ class: "tip", onclick: () => this._tipHandler("selectionBridge") }, "Bridge"), label$1({ class: "checkbox-container" }, this._bridgeGrow, "Grow"), label$1({ class: "checkbox-container" }, this._bridgeBend, "Bend")),
+                div$c({ class: "selectionOps-action" }, this._spread, div$c({ class: "tip", onclick: () => this._tipHandler("selectionSpread") }, "Spread"), label$1({ class: "checkbox-container" }, this._spreadStack, "Stack"), label$1({ class: "checkbox-container" }, this._spreadPitch, "Pitch")),
                 div$c({ class: "selectionOps-action" }, this._mirrorH, this._mirrorV, div$c({ class: "tip", onclick: () => this._tipHandler("selectionMirror") }, "Mirror")),
                 div$c({ class: "selectionOps-action" }, this._flatten, div$c({ class: "tip", onclick: () => this._tipHandler("selectionFlatten") }, "Flatten"), label$1({ class: "checkbox-container" }, this._flattenPitch, "Pitch"), label$1({ class: "checkbox-container" }, this._flattenVolume, "Vol")),
                 div$c({ class: "selectionOps-action" }, this._split, this._splitLabel, this._splitDropdown),
                 this._splitDropdownGroup,
                 div$c({ class: "selectionOps-action" }, this._volUp, this._volDown, this._volFadeOut, this._volFadeIn, this._volLabel, this._volDropdown),
                 this._volDropdownGroup,
-                div$c({ class: "selectionOps-action" }, this._stepFunctionRun, div$c({ class: "tip", onclick: () => this._tipHandler("selectionFunction") }, "Function"), div$c({ class: "selectContainer", style: "padding-left: 4px; width:100%;" }, this._stepFunctionSelect)),
-                this._stepFunctionParameterGroup
+                div$c({ class: "selectionOps-action" }, this._functionRun, div$c({ class: "tip", onclick: () => this._tipHandler("selectionFunction") }, "Function"), div$c({ class: "selectContainer", style: "padding-left: 4px; width:100%;" }, this._functionSelect)),
+                this._functionParameterGroup
             ];
             _selectionModeBtnMove.addEventListener("change", () => this._whenSelectionModeChanged(SelectionMode.Move));
             _selectionModeBtnStretch.addEventListener("change", () => this._whenSelectionModeChanged(SelectionMode.Stretch));
@@ -38150,63 +38545,98 @@ You should be redirected to the song at:<br /><br />
             this._updateSplitSliderParts(this._splitSliderInputBox)();
             this.htmlEntryPoint = div$c({}, _selectionOpsDescription, this._selectionModeLabel, _selectionModeButtonsGroup, ..._selectionOps);
         }
-        _getInvertFunctionGUI() {
-            const chkbxInvertInstead = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
-            const updatePerform = () => {
-                this._stepFunction = () => {
-                    this._doc.selection.noteStepAcross(this._patternEditor, chkbxInvertInstead.checked ? 'invert' : 'flip volume');
-                };
-            };
-            chkbxInvertInstead.addEventListener("change", updatePerform);
-            this._stepFunctionParameterGroup.replaceChildren(div$c({ class: "selectionOps-action" }, label$1({ class: "checkbox-container" }, chkbxInvertInstead, "Invert instead of flip?")));
-            updatePerform();
-        }
-        _getStaggerFunctionGUI() {
+        _getStepFunctionGUI(preset) {
+            var _a;
             const rows = [];
+            const behaviors = {
+                cycle: "cycle",
+                stretch: "stretch",
+                step: "step"
+            };
             const affects = {
                 vpn: "volume per note",
                 vpp: "volume per pin",
                 vbt: "volume by time",
-                ppn: "pitch per note",
-                ppp: "pitch per pin",
-                pbt: "pitch by time"
+                ppn: "base pitch per note",
+                bpn: "pitch bends per note",
+                bpp: "pitch bends per pin",
+                bbt: "pitch bends by time"
             };
+            let fromAffects;
+            let fromAdd;
+            let fromMultiply;
+            if (preset) {
+                fromAffects =
+                    (preset.affect === 'vol' && preset.per === 'note') ? 'vpn' :
+                        (preset.affect === 'vol' && preset.per === 'pin') ? 'vpp' :
+                            (preset.affect === 'vol' && preset.per === 'time') ? 'vbt' :
+                                (preset.affect === 'pitch') ? 'ppn' :
+                                    (preset.affect === 'bends' && preset.per === 'note') ? 'bpn' :
+                                        (preset.affect === 'bends' && preset.per === 'pin') ? 'bpp' :
+                                            (preset.affect === 'bends' && preset.per === 'time') ? 'bbt' :
+                                                undefined;
+                if (preset.add) {
+                    fromAdd = preset.add.join(',');
+                }
+                if (preset.mult) {
+                    fromMultiply = preset.mult.join(',');
+                }
+            }
             const updatePerform = () => {
-                this._stepFunction = () => {
-                    let isFirstRow = true;
+                this._functionTargetsPitch = rows.some(row => row.rowAffect.value === 'ppn' ||
+                    row.rowAffect.value === 'bpn' || row.rowAffect.value === 'bpp' || row.rowAffect.value === 'bbt');
+                this._updateFunctionDisabled();
+                this._specialFunction = () => {
+                    var _a, _b;
                     for (let row of rows) {
-                        const stepData = {};
                         const type = row.rowAffect.value;
-                        const or = (str, val) => str === "" ? val : str;
-                        const add = [`num % (${or(row.rowEvery.value, "2")}) === 0 \
-                        ? (${or(row.rowAdd.value, isFirstRow ? "(1 / (maxval - minval))" : "0")}) \
-                        : (${or(row.rowAddOther.value, isFirstRow ? "(-1 / (maxval - minval))" : "0")})`];
-                        const mul = [`num % (${or(row.rowEvery.value, "2")}) === 0 \
-                        ? (${or(row.rowMultiplyBy.value, isFirstRow ? "(1 / (maxval - minval))" : "1")}) \
-                        : (${or(row.rowMultiplyOther.value, isFirstRow ? "(1 / (maxval - minval))" : "1")})`];
-                        if (type === affects.vbt || type === affects.vpn || type === affects.vpp) {
-                            const per = type === affects.vpn ? "note" : type === affects.vpp ? "pin" : "time";
-                            stepData.volAdd = { array: add, type: "cycle", per: per },
-                                stepData.volMult = { array: mul, type: "cycle", per: per };
+                        const behavior = ((_b = (_a = row.rowBehavior) === null || _a === void 0 ? void 0 : _a.value) !== null && _b !== void 0 ? _b : 'cycle');
+                        const stepData = { affect: 'vol', type: behavior, onlyExistingPins: row.rowOnlyExistingPins.checked };
+                        const scale = (str) => type === 'vpn' || type === 'vpp' || type === 'vbt'
+                            ? `((${str}) / (maxrange - minrange))`
+                            : `(${str})`;
+                        const withDefault = (str, defaultVal) => str === "" ? defaultVal : str;
+                        const addArr = row.rowAdd.value === '' ? ['0']
+                            : row.rowAdd.value.split(',').map(str => withDefault(scale(str), scale('0')));
+                        const multArr = row.rowMultiplyBy.value === '' ? ['1']
+                            : row.rowMultiplyBy.value.split(',').map(str => withDefault(str, '1'));
+                        if (behavior === 'step') {
+                            addArr.push('0'),
+                                multArr.push('1');
                         }
-                        else if (type === affects.pbt || type === affects.ppn || type === affects.ppp) {
-                            const per = type === affects.ppn ? "note" : type === affects.ppp ? "pin" : "time";
-                            stepData.pitchAdd = { array: add, type: "cycle", per: per },
-                                stepData.pitchMult = { array: mul, type: "cycle", per: per };
-                        }
-                        this._doc.selection.noteStepAcross(this._patternEditor, stepData);
-                        isFirstRow = false;
+                        stepData.per = (type === 'vpn' || type === 'ppn' || type === 'bpn') ? "note"
+                            : type === 'vpp' || type === 'bpp' ? "pin"
+                                : "time";
+                        stepData.affect = (type === 'vpn' || type === 'vbt' || type === 'vpp') ? 'vol'
+                            : type === 'ppn' ? 'pitch'
+                                : 'bends';
+                        stepData.add = addArr;
+                        stepData.mult = multArr;
+                        this._doc.selection.noteStepAcross(stepData, Config.modCount - this._affectModChannelNum.valueAsNumber);
                     }
                 };
             };
             const createRow = (isFirstRow) => {
-                const affect = select$9({ value: affects.vpn }, ...Object.keys(affects).map(key => option$9({ value: affects[key] }, affects[key])));
-                const every = input$7({ class: "selectionOps-textbox", placeholder: "2", type: "text" });
-                const add = input$7({ class: "selectionOps-textbox", placeholder: isFirstRow ? "1 / (maxval - minval)" : "0", type: "text" });
-                const addOther = input$7({ class: "selectionOps-textbox", placeholder: isFirstRow ? "-1 / (maxval - minval)" : "0", type: "text" });
+                var _a;
+                const affect = select$9({}, ...Object.keys(affects).map(key => option$9({ value: key }, affects[key])));
+                const behavior = select$9({}, ...Object.keys(behaviors).map(key => option$9({ value: key }, key)));
+                const onlyExistingPins = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
+                const add = input$7({ class: "selectionOps-textbox", placeholder: "0", type: "text" });
                 const multiplyBy = input$7({ class: "selectionOps-textbox", placeholder: "1", type: "text" });
-                const multiplyOther = input$7({ class: "selectionOps-textbox", placeholder: "1", type: "text" });
                 const remove = button$c({ style: "margin-right: 4px;" }, "remove row");
+                affect.value = isFirstRow && fromAffects
+                    ? fromAffects
+                    : 'vpn';
+                behavior.value = isFirstRow && (preset === null || preset === void 0 ? void 0 : preset.type)
+                    ? preset.type
+                    : behaviors.cycle;
+                if (fromAdd) {
+                    add.value = isFirstRow ? fromAdd : '';
+                }
+                if (fromMultiply) {
+                    multiplyBy.value = isFirstRow ? fromMultiply : '';
+                }
+                onlyExistingPins.checked = isFirstRow ? ((_a = preset === null || preset === void 0 ? void 0 : preset.onlyExistingPins) !== null && _a !== void 0 ? _a : false) : false;
                 if (!isFirstRow) {
                     remove.addEventListener("click", () => {
                         const index = rows.findIndex(row => row.rowRemove === remove);
@@ -38217,36 +38647,42 @@ You should be redirected to the song at:<br /><br />
                         updatePerform();
                     });
                 }
-                [affect, every, add, addOther, multiplyBy, multiplyOther]
-                    .forEach(o => o.addEventListener("input", updatePerform));
+                [affect, behavior, add, multiplyBy, onlyExistingPins].forEach(o => o.addEventListener("input", updatePerform));
                 return {
                     generated: [
-                        div$c({ class: "selectionOps-action" }, label$1({ style: "width: 100%;" }, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerAffect") }, "Affect"), div$c({ class: "selectContainer", style: "width: 100%;" }, affect))),
-                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerEvery") }, "Every"), every)),
-                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerAdd") }, "Add"), add)),
-                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerAdd") }, "Otherwise add"), addOther)),
-                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerMultiply") }, "Multiply by"), multiplyBy)),
-                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepStaggerMultiply") }, "Otherwise multiply"), multiplyOther)),
+                        div$c({ class: "selectionOps-action" }, label$1({ style: "width: 100%;" }, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepAffect") }, "Affect"), div$c({ class: "selectContainer", style: "width: 100%;" }, affect))),
+                        div$c({ class: "selectionOps-action" }, label$1({ style: "width: 100%;" }, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepBehavior") }, "Behavior"), div$c({ class: "selectContainer", style: "width: 100%;" }, behavior))),
+                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepArrays") }, "Add"), add)),
+                        div$c({ class: "selectionOps-action" }, label$1({}, div$c({ class: "tip", onclick: () => this._tipHandler("selectionStepArrays") }, "Multiply by"), multiplyBy)),
+                        div$c({ class: "selectionOps-action" }, label$1({ style: "width: 100%;" }, label$1({ class: "checkbox-container" }, onlyExistingPins, "Only Existing Pins?"))),
                         ...(isFirstRow ? [] : [div$c({ class: "inlineblock" }, remove)])
                     ],
                     rowAffect: affect,
-                    rowEvery: every,
+                    rowBehavior: behavior,
                     rowAdd: add,
-                    rowAddOther: addOther,
                     rowMultiplyBy: multiplyBy,
-                    rowMultiplyOther: multiplyOther,
+                    rowOnlyExistingPins: onlyExistingPins,
                     rowRemove: remove
                 };
             };
             rows.push(createRow(true));
             const addRow = button$c({}, "Add row");
             addRow.addEventListener("click", () => {
-                var _a;
+                var _a, _b;
                 rows.push(createRow());
-                (_a = this._stepFunctionParameterGroup.lastElementChild) === null || _a === void 0 ? void 0 : _a.before(...rows[rows.length - 1].generated);
+                (_b = (_a = this._functionParameterGroup) === null || _a === void 0 ? void 0 : _a.lastElementChild) === null || _b === void 0 ? void 0 : _b.before(...rows[rows.length - 1].generated);
             });
-            this._stepFunctionParameterGroup.replaceChildren(...rows.flatMap(rows => rows.generated), div$c({ class: "inlineblock" }, addRow));
+            (_a = this._functionParameterGroup) === null || _a === void 0 ? void 0 : _a.replaceChildren(...rows.flatMap(rows => rows.generated), div$c({ class: "inlineblock" }, addRow));
             updatePerform();
+        }
+        _setSpecialFunction(specialFunction) {
+            var _a;
+            (_a = this._functionParameterGroup) === null || _a === void 0 ? void 0 : _a.replaceChildren();
+            this._functionTargetsPitch = false;
+            this._updateFunctionDisabled();
+            if (specialFunction === funcSpecialPresets.TapNotes) {
+                this._specialFunction = () => this._doc.selection.noteTapAcross(Config.modCount - this._affectModChannelNum.valueAsNumber);
+            }
         }
     }
 
@@ -39813,435 +40249,484 @@ You should be redirected to the song at:<br /><br />
         constructor(_doc, type) {
             this._doc = _doc;
             this._closeButton = button$5({ class: "cancelButton" });
-            this._close = () => {
-                this._doc.undo();
+            this._prevButton = button$5({}, "Back");
+            this._nextButton = button$5({}, "Next");
+            this._footer = div$5();
+            this.messages = [];
+            this.page = 0;
+            this._changePage = (page) => {
+                this.page = page;
+                if (this.messages.length > 1 && page > 0) {
+                    this._footer.appendChild(this._prevButton);
+                }
+                else if (this._footer.contains(this._prevButton)) {
+                    this._footer.removeChild(this._prevButton);
+                }
+                if (this.messages.length > 1 && page !== this.messages.length - 1) {
+                    this._footer.appendChild(this._nextButton);
+                }
+                else if (this._footer.contains(this._nextButton)) {
+                    this._footer.removeChild(this._nextButton);
+                }
+                const contents = [this.messages[this.page]];
+                contents.push(this._footer);
+                contents.push(this._closeButton);
+                this.container.replaceChildren(...contents);
+                setTimeout(() => this._closeButton.focus());
             };
+            this._prevPage = () => this._changePage(this.page - 1);
+            this._nextPage = () => this._changePage(this.page + 1);
+            this._close = () => this._doc.undo();
             this.cleanUp = () => {
+                this._prevButton.removeEventListener("click", this._prevPage);
+                this._nextButton.removeEventListener("click", this._nextPage);
                 this._closeButton.removeEventListener("click", this._close);
+                this.messages = [];
+                this.page = 0;
             };
-            let message;
             switch (type) {
                 case "scale":
                     {
-                        message = div$5(h2$4("Scale"), p("This setting limits the available pitches for adding notes. You may think that there's no point in limiting your choices, but the set of pitches you use has a strong influence on the mood and feel of your song, and these scales serve as guides to help you choose appropriate pitches. Don't worry, you can change the scale at any time, so you're not locked into it. Try making little melodies using all the available pitches of a scale to get a sense for how it sounds."), p("The most common scales are major and minor. Assuming your song uses all pitches in the scale and especially \"tonic\" pitches (the purple rows in the pattern editor) then major scales tend to sound more playful or optimistic, whereas minor scales sound more serious or sad."));
+                        this.messages = [div$5(h2$4("Scale"), p("This setting limits the available pitches for adding notes. You may think that there's no point in limiting your choices, but the set of pitches you use has a strong influence on the mood and feel of your song, and these scales serve as guides to help you choose appropriate pitches. Don't worry, you can change the scale at any time, so you're not locked into it. Try making little melodies using all the available pitches of a scale to get a sense for how it sounds."), p("The most common scales are major and minor. Assuming your song uses all pitches in the scale and especially \"tonic\" pitches (the purple rows in the pattern editor) then major scales tend to sound more playful or optimistic, whereas minor scales sound more serious or sad."))];
                     }
                     break;
                 case "selectionMerge": {
-                    message = div$5(h2$4("Merge"), p("This makes notes that touch turn into one continuous note. If \"All\" is active, it will merge all notes no matter what, and will even shift notes if it helps to connect them."), p("Merge affects on-screen notes that fit within your selection. It also works across channel selections."));
+                    this.messages = [div$5(h2$4("Merge"), p("This makes notes that touch turn into one continuous note. If \"All\" is active, it will merge all notes no matter what, and will even shift notes if it helps to connect them."), p("Merge affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     break;
                 }
                 case "selectionBridge": {
-                    message = div$5(h2$4("Bridge"), p("This creates notes in the empty space to the right of other notes. If \"Bend\" is active, the new notes will end at the starting pitch of the next note."), p("It affects only notes in the selected range, or all notes on the pattern(s) if none are selected."));
+                    this.messages = [div$5(h2$4("Bridge"), p("This creates notes in the empty space to the right of other notes, or extends existing ones if \"Grow\" is active."), p("If \"Bend\" is active, the new notes will end at the starting pitch of the next note except in drum channels, which always fade out."), p("Bridge affects only notes in the selected range, or all notes on the pattern(s) if none are selected."))];
                     break;
                 }
                 case "selectionSpread":
                     {
-                        message = div$5(h2$4("Spread"), p("This spreads notes to be evenly-spaced in the selection. If only one note is selected, it centers it."), p("If \"Pitch\" is active, it spreads the notes vertically like a staircase going up (crescendo) or down (decrescendo), whichever is closer."), p("Spread affects on-screen notes that fit within your selection. It also works across channel selections."));
+                        this.messages = [div$5(h2$4("Spread"), p("This spreads notes to be evenly-spaced in the selection. If only one note is selected, it centers it."), p("If \"Pitch\" is active, it spreads the notes vertically like a staircase going up (crescendo) or down (decrescendo), whichever is closer."), p("If \"Stack\" is active, it removes all spaces between notes, stacking on the left side of the selection, or bottom if \"Pitch\" is also active."), p("Spread affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     }
                     break;
                 case "selectionMirror":
                     {
-                        message = div$5(h2$4("Mirror"), p("The mirror operations cause notes to appear at the opposite ends, proportionally, of the range. For vertical mirror, the range is detected as the distance from lowest and highest existing notes."), p("Mirror affects on-screen notes that fit within your selection. It also works across channel selections."));
+                        this.messages = [div$5(h2$4("Mirror"), p("The mirror operations cause notes to appear at the opposite ends, proportionally, of the range. For vertical mirror, the range is detected as the distance from lowest and highest existing notes."), p("Mirror affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     }
                     break;
                 case "selectionFlatten":
                     {
-                        message = div$5(h2$4("Flatten"), p("This removes all pitch bends from notes. If \"Pitch\" is active, it also sets the notes to the average of their pitches."), p("Flatten affects on-screen notes that fit within your selection. It also works across channel selections."));
+                        this.messages = [div$5(h2$4("Flatten"), p("This removes all pitch bends from notes."), p("If \"Pitch\" is active, it also sets the notes to the average of their pitches."), p("If \"Vol\" is active, it resets all parts of notes to the default volume and does nothing else."), p("Flatten affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     }
                     break;
                 case "selectionSplit":
                     {
-                        message = div$5(h2$4("Split"), p("This makes a number of evenly-spaced cuts across the selected range, which separate notes."), p("Split affects on-screen notes that fit within your selection. It also works across channel selections."));
+                        this.messages = [div$5(h2$4("Split"), p("This makes a number of evenly-spaced cuts in the selected range, which separate notes. Normally it just cuts every note into even pieces."), p("If \"Across\" is active, instead of cutting each note X times, it makes X cuts in total across the selection."), p("If \"Absolute\" is active, it makes cuts every X parts instead of making X cuts, e.g. '4' would make a cut every four time units instead of making only four cuts."), p("Split affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     }
                     break;
                 case "selectionVolOps":
                     {
-                        message = div$5(h2$4("Volume operations"), p("These buttons adjust volume for the whole pattern, or the selection, even selections that include parts of notes."), p("These are the operations in order from top-left to bottom-right:"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Volume up/down"), div$5("Doubles or halves the volume"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Volume fade out/in"), div$5("Fade the selection to zero at the end or start"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Volume gain end/start"), div$5("Doubles volume of the selection at the end or start (opposite of fade)"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Volume studio fade out/in"), div$5("Like the volume fade operations, but with a quadratic curve so the fade is strong at the center, gradual at the ends"));
+                        this.messages = [div$5(h2$4("Volume operations"), p("These buttons adjust volume for the whole pattern, or the selection, even selections that include parts of notes."), p("These are the operations in order from top-left to bottom-right:"), div$5({ style: "font-style: italic; padding-top: 12px" }, "Volume up/down"), div$5("Doubles or halves the volume"), div$5({ style: "font-style: italic; padding-top: 12px" }, "Volume fade out/in"), div$5("Fade the selection to zero at the end or start"), div$5({ style: "font-style: italic; padding-top: 12px" }, "Volume gain end/start"), div$5("Doubles volume of the selection at the end or start (opposite of fade)"), div$5({ style: "font-style: italic; padding-top: 12px" }, "Volume studio fade out/in"), div$5("Like the volume fade operations, but with a quadratic curve so the fade is strong at the center, gradual at the ends"), div$5({ style: "font-style: italic; padding-top: 12px" }, "Maximize contrast"), div$5("Stretches the loudest notes to max volume, quietest notes to total silence, and everything between accordingly."))];
                     }
                     break;
                 case "selectionFunction":
                     {
-                        message = div$5(h2$4("Function"), p("This makes edits, like wobbles, that affect things like volume and pitch, or values in a mod channel. The presets are:"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Invert"), div$5("flips the value across its range. It has no settings. This makes unique effects with fades and overlapping uninverted versions."), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Stagger"), div$5("alternates between two sets of changes to apply to the value. You can change how long the sets last before switching to the other. This is good for on/off patterns in music."), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Ramp"), div$5("moves from one set of changes to another as it moves across values. You can also get jagged ramps by rounding. This is good for custom fades and gains."), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Wave"), div$5("wobbles the values along a wave, between two sets of changes (one for wave peaks, and one for troughs) with start and end amplitudes and frequencies. Try wobbling volumes as an example!"), div$5({ style: "font-weight: bold; padding-top: 12px" }, "Custom"), div$5("lets you perform arbitrary functions by giving values (numbers or math) and how to apply them. Values are separated by commas like 5, 4, x + 1. Math is allowed and you can use anything in the javascript Math object, like 'round(3.3)'."));
+                        this.messages = [div$5(h2$4("Function"), p("Select a preset and click the triangle (run) button to perform it. Try out the presets, or click the names of settings for a rundown on how they work."), h3("How it works"), p("Basically, a function works with note volumes, pitch bends, or overall pitch of a note. See the tip for \"Affect\"."), p("How it works is to use any number of values or expressions, separated by commas, like \"1\" or \"1,2,3\". But it also needs to know \*how\* to apply those values. See the tip for \"Behavior\".")), div$5(h2$4("Expression variables"), p("You can mix math into the number arrays, like \"1, 2 * sin(x), 0\" just like the presets. Invalid math is ignored. You can also use these special variables!"), p({}, span$3({ style: "font-style: italic;" }, "x, prev "), "The current or previous volume, bend or pitch, where prev is -1 for the first value"), p({}, span$3({ style: "font-style: italic;" }, "num, len "), "Number and length form a ratio of current/total for the note, pin #, or time value"), p({}, span$3({ style: "font-style: italic;" }, "low, high, avg "), "The smallest, biggest and average volume, bend or pitch in the selection, if any"), p({}, span$3({ style: "font-style: italic;" }, "maxrange, minrange "), "The max or min allowed volume or pitch, where minrange can be negative for modulation")), div$5(h2$4("Expression advanced"), p("Other variables are composed of a few words at a time, like \"pitchesmax\" or \"vol\". These let you work with detailed info."), p("Use (pitches or bends or vols) then (max or min or avg) such as volsmin, pitchesmax, bendsavg, etc."), p("Use (pitch or bend or vol) then optionally (max or min or avg or prev) such as pitch or bendmax or volprev. Using the base word like pitch gets the current value. The current/previous volume/bend are only available when targeting either of those.")), div$5(h2$4("Expression math"), p("Any function in the Javascript \"Math\" object can be used, with parentheses like sin(5):"), p({}, span$3({ style: "font-style: italic;" }, "pi, sin(x), cos(x), tan(x) "), "The constant PI and the sine, cosine and tangent functions. Useful for wobbles"), p({}, span$3({ style: "font-style: italic;" }, "abs(x), sign(x) "), "The absolute value function and sign functions. Useful for forcing or detecting if a value is positive"), p({}, span$3({ style: "font-style: italic;" }, "ceil(x), round(x), floor(x) "), "The rounding functions. Ceiling only rounds up and floor rounds down"), p({}, span$3({ style: "font-style: italic;" }, "pow(x,y) "), "Takes two numbers and raises the first to the power of the second. Equivalent to \"x ** y\""), p({}, span$3({ style: "font-style: italic;" }, "max(x,y), min(x,y) "), "Maximum and minimum, which compare two numbers and returns the greatest or smallest value. Useful to cap values"), p({}, span$3({ style: "font-style: italic;" }, "random() "), "Takes no numbers. Generates a random value between 0 and 1 like 0.3542. Useful for random variation."))];
+                    }
+                    break;
+                case "selectionStepAffect":
+                    {
+                        this.messages = [div$5(h2$4("Affect"), p("You can change the volume/pitch and pitch bends of notes, or affect pitch in non-modulation channels. Note: there are limits on how many pitches and volume values exist, which affects output quality."), p(`Volume goes up to ${Config.noteSizeMax} except in mod channels where it depends on the target and can be negative.`), p(`Pitch goes up to ${Config.maxPitch} in pitch channels, ${Config.drumCount - 1} in drum channels, and is disabled in mod channels. Base pitch affects whole notes at once, while pitch bends can change pins.`))];
+                    }
+                    break;
+                case "selectionStepBehavior":
+                    {
+                        this.messages = [div$5(h2$4("Behavior"), p("This decides which number to use in the add/multiply list of values."), p("\"Step\" gives an even amount of time to use each number in the array, from left to right. adding \"x, 1\" would add x until halfway when it switches to 1."), p("\"Stretch\" is like Step, but it blends the results, e.g. adding \"x, 1\" would add x at first, averaging to 1 at the end."), p("\"Cycle\" doesn't give an even amount of time to each number. Instead, it just picks the next number in the list, wrapping around. E.g. \"x, 1\" would pick x,1,x,1,..."))];
+                    }
+                    break;
+                case "selectionStepArrays":
+                    {
+                        this.messages = [div$5(h2$4("Add and Multiply by"), p("These are the instructions on what to add or multiply by as the function runs."), p("Each array can have any number of expressions separated by commas. It can be as simple as a number \"5\" or as complex as \"sin(num)\". "
+                                + "Multiple values would look something like \"5, 7, sin(x) + 1, 6\"."), p("First, multiplication is performed, and then addition."))];
+                    }
+                    break;
+                case "selectionModTarget":
+                    {
+                        this.messages = [div$5(h2$4("Modulation track to affect"), p("Which modulation channel to affect, #1 is the top track, #2 is the track below it, and so on."))];
                     }
                     break;
                 case "key":
                     {
-                        message = div$5(h2$4("Song Key"), p("This setting can shift the frequency of every note in your entire song up or down, keeping the \"tonic\" pitches (the brown rows in the pattern editor) aligned with the selected \"key\" pitch."), p("If you've already placed some notes but they don't emphasize \"tonic\" pitches then the selected key isn't very meaningful. You can select the \"Detect Key\" option in the key menu to automatically align the most emphasized notes with \"tonic\" pitches."));
+                        this.messages = [div$5(h2$4("Song Key"), p("This setting can shift the frequency of every note in your entire song up or down, keeping the \"tonic\" pitches (the brown rows in the pattern editor) aligned with the selected \"key\" pitch."), p("If you've already placed some notes but they don't emphasize \"tonic\" pitches then the selected key isn't very meaningful. You can select the \"Detect Key\" option in the key menu to automatically align the most emphasized notes with \"tonic\" pitches."))];
                     }
                     break;
                 case "key_octave":
                     {
-                        message = div$5(h2$4("Octave"), p("This setting can shift the \"key\" by an octave, allowing you to use a B- or C+ key."), p(`This goes from ${Config.octaveMin} to ${Config.octaveMax}.`));
+                        this.messages = [div$5(h2$4("Octave"), p("This setting can shift the \"key\" by an octave, allowing you to use a B- or C+ key."), p(`This goes from ${Config.octaveMin} to ${Config.octaveMax}.`))];
                     }
                     break;
                 case "tempo":
                     {
-                        message = div$5(h2$4("Song Tempo"), p("This setting controls the speed of your song, measured in beats-per-minute. A \"beat\" is the duration of the little gray rectangles in the pattern editor. (In conventional music notation, a \"quarter note\" is usually equivalent to \"beat\".)"));
+                        this.messages = [div$5(h2$4("Song Tempo"), p("This setting controls the speed of your song, measured in beats-per-minute. A \"beat\" is the duration of the little gray rectangles in the pattern editor. (In conventional music notation, a \"quarter note\" is usually equivalent to \"beat\".)"))];
                     }
                     break;
                 case "reverb":
                     {
-                        message = div$5(h2$4("Reverb"), p("Reverb is like a continuous echo effect. A little bit helps instruments sound more natural. Adding a lot of reverb can add sense of depth or mystery, but too much reverb can kinda \"smear\" sounds so that it's harder to distinguish notes or instruments, especially for lower \"bass\" notes."));
+                        this.messages = [div$5(h2$4("Reverb"), p("Reverb is like a continuous echo effect. A little bit helps instruments sound more natural. Adding a lot of reverb can add sense of depth or mystery, but too much reverb can kinda \"smear\" sounds so that it's harder to distinguish notes or instruments, especially for lower \"bass\" notes."))];
                     }
                     break;
                 case "rhythm":
                     {
-                        message = div$5(h2$4("Rhythm"), p("This setting determines how beats are divided. The pattern editor helps you align notes to fractions of a beat based on this setting."), p("If you've already placed some notes but they don't align with the selected rhythm, you can select the \"Snap Notes To Rhythm\" option in the rhythm menu to force the notes in the currently selected pattern(s) to align with the selected rhythm."));
+                        this.messages = [div$5(h2$4("Rhythm"), p("This setting determines how beats are divided. The pattern editor helps you align notes to fractions of a beat based on this setting."), p("If you've already placed some notes but they don't align with the selected rhythm, you can select the \"Snap Notes To Rhythm\" option in the rhythm menu to force the notes in the currently selected pattern(s) to align with the selected rhythm."))];
                     }
                     break;
                 case "instrumentIndex":
                     {
-                        message = div$5(h2$4("Instrument Number"), p("In the \"Channel Settings\" option from UltraBox's \"Edit\" menu, there are a few ways to enable multiple instruments per channel."), p("First, you could enable multiple simultaneous instruments per channel. All of the channel's instruments will play all of the notes in the channel at the same time, and you can click an instrument number to view and edit its settings."), p("Second, you could enable different instruments per pattern. Only one of the instruments will play at any given time, but you can click the instrument number to change which instrument is used for the currently selected pattern(s)."), p("Finally, you can enable them both, in which case you can click an instrument number once to view it, and again to toggle whether the instrument is used for the currently selected pattern(s)."), p("Either way, you can click the + button to add more instruments to a channel, and you can press shift and a number key on your keyboard to select an instrument as if you had clicked the corresponding button here."));
+                        this.messages = [div$5(h2$4("Instrument Number"), p("In the \"Channel Settings\" option from UltraBox's \"Edit\" menu, there are a few ways to enable multiple instruments per channel."), p("First, you could enable multiple simultaneous instruments per channel. All of the channel's instruments will play all of the notes in the channel at the same time, and you can click an instrument number to view and edit its settings."), p("Second, you could enable different instruments per pattern. Only one of the instruments will play at any given time, but you can click the instrument number to change which instrument is used for the currently selected pattern(s)."), p("Finally, you can enable them both, in which case you can click an instrument number once to view it, and again to toggle whether the instrument is used for the currently selected pattern(s)."), p("Either way, you can click the + button to add more instruments to a channel, and you can press shift and a number key on your keyboard to select an instrument as if you had clicked the corresponding button here."))];
                     }
                     break;
                 case "instrumentVolume":
                     {
-                        message = div$5(h2$4("Instrument Volume"), p("This setting controls the volume of the selected instrument without affecting the volume of the other instruments. This allows you to balance the loudness of each instrument relative to each other."), p("Please be careful when using volume settings above 0. This indicates amplification and too much of that can trip the audio limiter built into this tool. This can lead to your song sounding muffled if overused. But when used carefully, amplification can be a powerful tool!"));
+                        this.messages = [div$5(h2$4("Instrument Volume"), p("This setting controls the volume of the selected instrument without affecting the volume of the other instruments. This allows you to balance the loudness of each instrument relative to each other."), p("Please be careful when using volume settings above 0. This indicates amplification and too much of that can trip the audio limiter built into this tool. This can lead to your song sounding muffled if overused. But when used carefully, amplification can be a powerful tool!"))];
                     }
                     break;
                 case "pan":
                     {
-                        message = div$5(h2$4("Instrument Panning"), p("If you're listening through headphones or some other stereo sound system, this controls the position of the instrument and where the sound is coming from, ranging from left to right."), p("As a suggestion, composers often put lead melodies, drums, and basses in the center, and spread other instruments toward either side. If too many instruments seem like they're coming from the same place, it can feel crowded and harder to distinguish individual sounds, especially if they cover a similar pitch range."));
+                        this.messages = [div$5(h2$4("Instrument Panning"), p("If you're listening through headphones or some other stereo sound system, this controls the position of the instrument and where the sound is coming from, ranging from left to right."), p("As a suggestion, composers often put lead melodies, drums, and basses in the center, and spread other instruments toward either side. If too many instruments seem like they're coming from the same place, it can feel crowded and harder to distinguish individual sounds, especially if they cover a similar pitch range."))];
                     }
                     break;
                 case "panDelay":
                     {
-                        message = div$5(h2$4("Stereo Delay"), p("When panning, a slight delay is often added between the left and right ear to help make a sound feel more 'directional'. For example, in the real world your left ear will hear a sound coming from the left just slightly before the right ear."), p("This setting controls how much delay is added. When this is set to minimum, panning only affects the volume of the left/right ear without changing the delay. This can help to get a more 'uniform' feeling sound, which can be desirable for making 8-bit music."));
+                        this.messages = [div$5(h2$4("Stereo Delay"), p("When panning, a slight delay is often added between the left and right ear to help make a sound feel more 'directional'. For example, in the real world your left ear will hear a sound coming from the left just slightly before the right ear."), p("This setting controls how much delay is added. When this is set to minimum, panning only affects the volume of the left/right ear without changing the delay. This can help to get a more 'uniform' feeling sound, which can be desirable for making 8-bit music."))];
                     }
                     break;
                 case "arpeggioSpeed":
                     {
-                        message = div$5(h2$4("Arpeggio Speed"), p("This setting affects how fast your chord will 'arpeggiate', or cycle between notes. With a fast arpeggio speed it will sound rapid-fire, with a slow speed you can hear each note one after another."));
+                        this.messages = [div$5(h2$4("Arpeggio Speed"), p("This setting affects how fast your chord will 'arpeggiate', or cycle between notes. With a fast arpeggio speed it will sound rapid-fire, with a slow speed you can hear each note one after another."))];
                     }
                     break;
                 case "twoNoteArpeggio":
                     {
-                        message = div$5(h2$4("Faster Two-Note Arpeggio"), p("This setting makes arpeggios with only two notes in them happen twice as fast. Arpeggios with more notes in them are unaffected."));
+                        this.messages = [div$5(h2$4("Faster Two-Note Arpeggio"), p("This setting makes arpeggios with only two notes in them happen twice as fast. Arpeggios with more notes in them are unaffected."))];
                     }
                     break;
                 case "detune":
                     {
-                        message = div$5(h2$4("Detune"), p("This setting can be used to finely control the pitch of your instrument. It is in units of 'cents', 100 of which equal a pitch shift of one semitone."), p("Careful - you can quickly get very dissonant sounding songs by using this setting."));
+                        this.messages = [div$5(h2$4("Detune"), p("This setting can be used to finely control the pitch of your instrument. It is in units of 'cents', 100 of which equal a pitch shift of one semitone."), p("Careful - you can quickly get very dissonant sounding songs by using this setting."))];
                     }
                     break;
                 case "instrumentType":
                     {
-                        message = div$5(h2$4("Instrument Type"), p("UltraBox comes with many instrument presets, try them out! You can also create your own custom instruments!"), p("There are also buttons for copying and pasting instruments at the bottom of the instrument settings tab, and for generating random instruments in the \"Randomize\" category in the instrument type menu."));
+                        this.messages = [div$5(h2$4("Instrument Type"), p("UltraBox comes with many instrument presets, try them out! You can also create your own custom instruments!"), p("There are also buttons for copying and pasting instruments at the bottom of the instrument settings tab, and for generating random instruments in the \"Randomize\" category in the instrument type menu."))];
                     }
                     break;
                 case "eqFilter":
                     {
-                        message = div$5(h2$4("EQ Filter"), p("Filters are a way of emphasizing or diminishing different parts of a sound. Musical notes have a fundamental (base) frequency, but the sound of a musical note also has parts at higher frequencies and filters can adjust the volume of each of these parts based on their frequency."), p("Click in the filter editor to insert, delete, or drag a filter control point. The horizontal position of the point determines which frequencies it affects, and the vertical position determines how the volume is affected at that frequency."), p("Insert a new point on the left side of the filter editor to add a \"high-pass\" filter point, which additionally reduces the volume of lower frequencies, or insert a new point on the right side to add a \"low-pass\" filter point which reduces the volume of higher frequencies."), p("You can also enable a \"Note Filter\" as an effect. EQ and note filters are mostly the same, but have different purposes. EQ filters are for overall adjustments, whereas note filters are for dynamic control and can be moved with envelopes. Note filters also change how the distortion effect sounds."));
+                        this.messages = [div$5(h2$4("EQ Filter"), p("Filters are a way of emphasizing or diminishing different parts of a sound. Musical notes have a fundamental (base) frequency, but the sound of a musical note also has parts at higher frequencies and filters can adjust the volume of each of these parts based on their frequency."), p("Click in the filter editor to insert, delete, or drag a filter control point. The horizontal position of the point determines which frequencies it affects, and the vertical position determines how the volume is affected at that frequency."), p("Insert a new point on the left side of the filter editor to add a \"high-pass\" filter point, which additionally reduces the volume of lower frequencies, or insert a new point on the right side to add a \"low-pass\" filter point which reduces the volume of higher frequencies."), p("You can also enable a \"Note Filter\" as an effect. EQ and note filters are mostly the same, but have different purposes. EQ filters are for overall adjustments, whereas note filters are for dynamic control and can be moved with envelopes. Note filters also change how the distortion effect sounds."))];
                     }
                     break;
                 case "noteFilter":
                     {
-                        message = div$5(h2$4("Note Filter"), p("Note filters are mostly the same as EQ filters, but have a different purpose. EQ filters are for overall adjustments, whereas note filters are for dynamic control and can be moved with envelopes. Note filters also change how the distortion effect sounds."), p("Filters are a way of emphasizing or diminishing different parts of a sound. Musical notes have a fundamental (base) frequency, but the sound of a musical note also has parts at higher frequencies and filters can adjust the volume of each of these parts based on their frequency."), p("Click in the filter editor to insert, delete, or drag a filter control point. The horizontal position of the point determines which frequencies it affects, and the vertical position determines how the volume is affected at that frequency."), p("Insert a new point on the left side of the filter editor to add a \"high-pass\" filter point, which additionally reduces the volume of lower frequencies, or insert a new point on the right side to add a \"low-pass\" filter point which reduces the volume of higher frequencies."));
+                        this.messages = [div$5(h2$4("Note Filter"), p("Note filters are mostly the same as EQ filters, but have a different purpose. EQ filters are for overall adjustments, whereas note filters are for dynamic control and can be moved with envelopes. Note filters also change how the distortion effect sounds."), p("Filters are a way of emphasizing or diminishing different parts of a sound. Musical notes have a fundamental (base) frequency, but the sound of a musical note also has parts at higher frequencies and filters can adjust the volume of each of these parts based on their frequency."), p("Click in the filter editor to insert, delete, or drag a filter control point. The horizontal position of the point determines which frequencies it affects, and the vertical position determines how the volume is affected at that frequency."), p("Insert a new point on the left side of the filter editor to add a \"high-pass\" filter point, which additionally reduces the volume of lower frequencies, or insert a new point on the right side to add a \"low-pass\" filter point which reduces the volume of higher frequencies."))];
                     }
                     break;
                 case "fadeInOut":
                     {
-                        message = div$5(h2$4("Fade In/Out"), p("This setting controls how long it takes for notes to reach full volume at the beginning or decay to silence at the end."), p("An instant fade-in sounds like instruments that are played by hitting or plucking, whereas slower fade-ins sound like instruments that are played by blowing air."), p("You can also make the fade-out start before the note ends to leave a gap before the next note starts, or after the note ends to allow the sound of the end of the note to overlap with the start of the next note."));
+                        this.messages = [div$5(h2$4("Fade In/Out"), p("This setting controls how long it takes for notes to reach full volume at the beginning or decay to silence at the end."), p("An instant fade-in sounds like instruments that are played by hitting or plucking, whereas slower fade-ins sound like instruments that are played by blowing air."), p("You can also make the fade-out start before the note ends to leave a gap before the next note starts, or after the note ends to allow the sound of the end of the note to overlap with the start of the next note."))];
                     }
                     break;
                 case "transition":
                     {
-                        message = div$5(h2$4("Transition"), p("Usually, when one note ends at the same time another begins, the old note will fade out and the new note will fade in based on the fade in/out settings, but this setting can override that, connecting the end of one note to the beginning of the next."), p("The \"interrupt\" transition makes the wave suddenly change from the old note's frequency to the new note's frequency without any fading, but still restarts envelopes at the beginning of the new note. The \"continue\" transition is similar but it doesn't even restart envelopes, and can be used to make each of the notes in a chord start or stop at different times!"), p("The \"slide\" transition makes the pitch shift quickly but not instantaneously from the old note's frequency to the new note's frequency, and softly restarts envelopes. The \"slide in pattern\" transition is the same except it doesn't connect the last note in a pattern to the first note in the next pattern."));
+                        this.messages = [div$5(h2$4("Transition"), p("Usually, when one note ends at the same time another begins, the old note will fade out and the new note will fade in based on the fade in/out settings, but this setting can override that, connecting the end of one note to the beginning of the next."), p("The \"interrupt\" transition makes the wave suddenly change from the old note's frequency to the new note's frequency without any fading, but still restarts envelopes at the beginning of the new note. The \"continue\" transition is similar but it doesn't even restart envelopes, and can be used to make each of the notes in a chord start or stop at different times!"), p("The \"slide\" transition makes the pitch shift quickly but not instantaneously from the old note's frequency to the new note's frequency, and softly restarts envelopes. The \"slide in pattern\" transition is the same except it doesn't connect the last note in a pattern to the first note in the next pattern."))];
                     }
                     break;
                 case "chipWave":
                     {
-                        message = div$5(h2$4("Chip Wave"), p("UltraBox comes with some sound waves based on classic electronic sound chips, as well as several unique waves. This is the basic source of the sound of the instrument, which is modified by the other instrument settings."));
+                        this.messages = [div$5(h2$4("Chip Wave"), p("UltraBox comes with some sound waves based on classic electronic sound chips, as well as several unique waves. This is the basic source of the sound of the instrument, which is modified by the other instrument settings."))];
                     }
                     break;
                 case "chipNoise":
                     {
-                        message = div$5(h2$4("Noise"), p("UltraBox comes with several basic noise sounds. These do not have any distinct musical pitch, and can be used like drums to create beats and emphasize your song's rhythm."));
+                        this.messages = [div$5(h2$4("Noise"), p("UltraBox comes with several basic noise sounds. These do not have any distinct musical pitch, and can be used like drums to create beats and emphasize your song's rhythm."))];
                     }
                     break;
                 case "supersawDynamism":
                     {
-                        message = div$5(h2$4("Supersaw Dynamism"), p("A supersaw is a combination of many sawtooth waves, and this setting controls the contribution of extra sawtooth waves."), p("At the low end of the slider, only the first wave is contributing to the sound, which sounds like an ordinary static sawtooth wave. At the maximum setting, all of the waves are contributing equally and the resulting tone can randomly shift depending on how the waves line up with each other, similar to the \"unison\" and \"chorus\" settings."));
+                        this.messages = [div$5(h2$4("Supersaw Dynamism"), p("A supersaw is a combination of many sawtooth waves, and this setting controls the contribution of extra sawtooth waves."), p("At the low end of the slider, only the first wave is contributing to the sound, which sounds like an ordinary static sawtooth wave. At the maximum setting, all of the waves are contributing equally and the resulting tone can randomly shift depending on how the waves line up with each other, similar to the \"unison\" and \"chorus\" settings."))];
                     }
                     break;
                 case "supersawSpread":
                     {
-                        message = div$5(h2$4("Supersaw Spread"), p("A supersaw is a combination of many sawtooth waves, and this setting controls the distance between their frequencies. The dynamism setting must be used for the extra waves to have any effect."), p("At the low end of the spread slider, all of the voices have the same frequency but random phase, resulting in a different sound every time a note starts. In the middle, the waves all have slightly different frequencies that shift in and out of phase over time similar to the \"unison\" and \"chorus\" settings, creating a classic supersaw sound. At the extreme end, the frequencies are so far apart they sound dissonant."));
+                        this.messages = [div$5(h2$4("Supersaw Spread"), p("A supersaw is a combination of many sawtooth waves, and this setting controls the distance between their frequencies. The dynamism setting must be used for the extra waves to have any effect."), p("At the low end of the spread slider, all of the voices have the same frequency but random phase, resulting in a different sound every time a note starts. In the middle, the waves all have slightly different frequencies that shift in and out of phase over time similar to the \"unison\" and \"chorus\" settings, creating a classic supersaw sound. At the extreme end, the frequencies are so far apart they sound dissonant."))];
                     }
                     break;
                 case "supersawShape":
                     {
-                        message = div$5(h2$4("Supersaw Shape"), p("This supersaw instrument includes an option to change the shape of the waves from sawtooth waves to pulse waves. Use this setting to morph between the two shapes."), p("When a pulse wave shape is used, you can also control the pulse width with a separate setting."));
+                        this.messages = [div$5(h2$4("Supersaw Shape"), p("This supersaw instrument includes an option to change the shape of the waves from sawtooth waves to pulse waves. Use this setting to morph between the two shapes."), p("When a pulse wave shape is used, you can also control the pulse width with a separate setting."))];
                     }
                     break;
                 case "pulseWidth":
                     {
-                        message = div$5(h2$4("Pulse Wave Width"), p("This setting controls the shape and sound of a pulse wave. At the minimum width, it sounds light and buzzy. At the maximum width, it is shaped like a classic square wave."));
+                        this.messages = [div$5(h2$4("Pulse Wave Width"), p("This setting controls the shape and sound of a pulse wave. At the minimum width, it sounds light and buzzy. At the maximum width, it is shaped like a classic square wave."))];
                     }
                     break;
                 case "unison":
                     {
-                        message = div$5(h2$4("Unison"), p("This instrument can play two identical waves at different frequencies. When two waves play at slightly different frequencies, they move in and out of phase with each other over time as different parts of the waves line up. This creates a dynamic, shifting sound. Pianos are a common example of this kind of sound, because each piano key strikes multiple strings that are tuned to slightly different frequencies."), p("The distance between two frequencies is called an \"interval\", and this setting controls how large it is. If the interval is too wide, then the waves may sound out-of-tune and \"dissonant\". However, if the interval is even larger, then the two frequencies can even be distinct pitches."));
+                        this.messages = [div$5(h2$4("Unison"), p("This instrument can play two identical waves at different frequencies. When two waves play at slightly different frequencies, they move in and out of phase with each other over time as different parts of the waves line up. This creates a dynamic, shifting sound. Pianos are a common example of this kind of sound, because each piano key strikes multiple strings that are tuned to slightly different frequencies."), p("The distance between two frequencies is called an \"interval\", and this setting controls how large it is. If the interval is too wide, then the waves may sound out-of-tune and \"dissonant\". However, if the interval is even larger, then the two frequencies can even be distinct pitches."))];
                     }
                     break;
                 case "chords":
                     {
-                        message = div$5(h2$4("Chords"), p("When multiple different notes occur at the same time, this is called a chord. Chords can be created in UltraBox's pattern editor by adding notes above or below another note."), p("This setting determines how chords are played. The standard option is \"simultaneous\" which starts playing all of the pitches in a chord at the same instant. The \"strum\" option is similar, but plays the notes starting at slightly different times. The \"arpeggio\" option is used in \"chiptune\" style music and plays a single tone that rapidly alternates between all of the pitches in the chord."), p("Some UltraBox instruments have an option called \"custom interval\" which uses the chord notes to control the interval between the waves of a single tone. This can create strange sound effects when combined with FM modulators."));
+                        this.messages = [div$5(h2$4("Chords"), p("When multiple different notes occur at the same time, this is called a chord. Chords can be created in UltraBox's pattern editor by adding notes above or below another note."), p("This setting determines how chords are played. The standard option is \"simultaneous\" which starts playing all of the pitches in a chord at the same instant. The \"strum\" option is similar, but plays the notes starting at slightly different times. The \"arpeggio\" option is used in \"chiptune\" style music and plays a single tone that rapidly alternates between all of the pitches in the chord."), p("Some UltraBox instruments have an option called \"custom interval\" which uses the chord notes to control the interval between the waves of a single tone. This can create strange sound effects when combined with FM modulators."))];
                     }
                     break;
                 case "vibrato":
                     {
-                        message = div$5(h2$4("Vibrato"), p("This setting causes the frequency of a note to wobble slightly. Singers and violinists often use vibrato."));
+                        this.messages = [div$5(h2$4("Vibrato"), p("This setting causes the frequency of a note to wobble slightly. Singers and violinists often use vibrato."))];
                     }
                     break;
                 case "vibratoDepth":
                     {
-                        message = div$5(h2$4("Vibrato Depth"), p("This setting affects the depth of your instrument's vibrato, making the wobbling effect sound stronger or weaker."));
+                        this.messages = [div$5(h2$4("Vibrato Depth"), p("This setting affects the depth of your instrument's vibrato, making the wobbling effect sound stronger or weaker."))];
                     }
                     break;
                 case "vibratoDelay":
                     {
-                        message = div$5(h2$4("Vibrato Delay"), p("This setting changes when vibrato starts to kick in after a note is played. Vibrato is most common for long held notes and less common in short notes, so this can help you achieve that effect."));
+                        this.messages = [div$5(h2$4("Vibrato Delay"), p("This setting changes when vibrato starts to kick in after a note is played. Vibrato is most common for long held notes and less common in short notes, so this can help you achieve that effect."))];
                     }
                     break;
                 case "vibratoSpeed":
                     {
-                        message = div$5(h2$4("Vibrato Speed"), p("This setting determines how fast the vibrato's up-and-down wobble effect will happen for your instrument."));
+                        this.messages = [div$5(h2$4("Vibrato Speed"), p("This setting determines how fast the vibrato's up-and-down wobble effect will happen for your instrument."))];
                     }
                     break;
                 case "vibratoType":
                     {
-                        message = div$5(h2$4("Vibrato Type"), p("This determines the way vibrato causes your instrument's pitch to wobble. The normal type is smooth up and down, the shaky type is chaotic."));
+                        this.messages = [div$5(h2$4("Vibrato Type"), p("This determines the way vibrato causes your instrument's pitch to wobble. The normal type is smooth up and down, the shaky type is chaotic."))];
                     }
                     break;
                 case "algorithm":
                     {
-                        message = div$5(h2$4("FM Algorithm"), p('FM Synthesis is a mysterious but powerful technique for crafting sounds, popularized by Yamaha keyboards and the Sega Genesis/Mega Drive. It may seem confusing, but try playing around with the options until you get a feel for it, or check out some of the preset examples!'), p('This FM synthesizer uses up to four waves, numbered 1, 2, 3, and 4. Each wave may have its own frequency and volume.'), p('There are two kinds of waves: "carrier" waves play a tone out loud, but "modulator" waves distort other waves instead. Wave 1 is always a carrier and plays a tone, but other waves may distort it. The "Algorithm" setting determines which waves are modulators, and which other waves those modulators distort. For example, "1←2" means that wave 2 modulates wave 1, and wave 1 plays out loud.'));
+                        this.messages = [div$5(h2$4("FM Algorithm"), p('FM Synthesis is a mysterious but powerful technique for crafting sounds, popularized by Yamaha keyboards and the Sega Genesis/Mega Drive. It may seem confusing, but try playing around with the options until you get a feel for it, or check out some of the preset examples!'), p('This FM synthesizer uses up to four waves, numbered 1, 2, 3, and 4. Each wave may have its own frequency and volume.'), p('There are two kinds of waves: "carrier" waves play a tone out loud, but "modulator" waves distort other waves instead. Wave 1 is always a carrier and plays a tone, but other waves may distort it. The "Algorithm" setting determines which waves are modulators, and which other waves those modulators distort. For example, "1←2" means that wave 2 modulates wave 1, and wave 1 plays out loud.'))];
                     }
                     break;
                 case "feedbackType":
                     {
-                        message = div$5(h2$4("Feedback Type"), p('Modulators distort in one direction (like 1←2), but you can also use the feedback setting to make any wave distort in the opposite direction (1→2), or even itself (1⟲).'));
+                        this.messages = [div$5(h2$4("Feedback Type"), p('Modulators distort in one direction (like 1←2), but you can also use the feedback setting to make any wave distort in the opposite direction (1→2), or even itself (1⟲).'))];
                     }
                     break;
                 case "feedbackVolume":
                     {
-                        message = div$5(h2$4("Feedback Distortion"), p("This setting controls the amount of feedback distortion based on the feedback type setting."));
+                        this.messages = [div$5(h2$4("Feedback Distortion"), p("This setting controls the amount of feedback distortion based on the feedback type setting."))];
                     }
                     break;
                 case "operatorFrequency":
                     {
-                        message = div$5(h2$4("Operator Frequency"), p('This setting controls the frequency of an individual FM wave, relative to the fundamental frequency of the note. The multiplier 1× is the same as the fundamental frequency, whereas 2x would be an octave (12 semitones) above it. The frequencies with a "~" are slightly detuned and shift in and out of phase over time compared to the other frequencies.'), p('Try different combinations of a "carrier" wave and a "modulator" wave with different frequencies to get a feel for how they sound together.'));
+                        this.messages = [div$5(h2$4("Operator Frequency"), p('This setting controls the frequency of an individual FM wave, relative to the fundamental frequency of the note. The multiplier 1× is the same as the fundamental frequency, whereas 2x would be an octave (12 semitones) above it. The frequencies with a "~" are slightly detuned and shift in and out of phase over time compared to the other frequencies.'), p('Try different combinations of a "carrier" wave and a "modulator" wave with different frequencies to get a feel for how they sound together.'))];
                     }
                     break;
                 case "operatorVolume":
                     {
-                        message = div$5(h2$4("Operator Volume"), p("This setting controls the volume of \"carrier\" waves, or the amount of distortion that \"modulator\" waves apply to other waves."));
+                        this.messages = [div$5(h2$4("Operator Volume"), p("This setting controls the volume of \"carrier\" waves, or the amount of distortion that \"modulator\" waves apply to other waves."))];
                     }
                     break;
                 case "spectrum":
                     {
-                        message = div$5(h2$4("Spectrum"), p("This setting allows you to draw your own noise spectrum! This is good for making drum sounds."), p("If you only use certain frequencies and a soft fade in/out, it's also possible to make howling wind sounds or even musical wind instruments."), p("The left side of the spectrum editor controls the noise energy at lower frequencies, and the right side controls higher frequencies."));
+                        this.messages = [div$5(h2$4("Spectrum"), p("This setting allows you to draw your own noise spectrum! This is good for making drum sounds."), p("If you only use certain frequencies and a soft fade in/out, it's also possible to make howling wind sounds or even musical wind instruments."), p("The left side of the spectrum editor controls the noise energy at lower frequencies, and the right side controls higher frequencies."))];
                     }
                     break;
                 case "harmonics":
                     {
-                        message = div$5(h2$4("Harmonics"), p("This setting allows you to design your own sound wave! Most musical waves are actually a combination of sine waves at certain frequencies, and this lets you control the volume of each sine wave individually."), p("The left side of the harmonics editor controls the sine wave volumes at lower frequencies, and the right side controls higher frequencies."));
+                        this.messages = [div$5(h2$4("Harmonics"), p("This setting allows you to design your own sound wave! Most musical waves are actually a combination of sine waves at certain frequencies, and this lets you control the volume of each sine wave individually."), p("The left side of the harmonics editor controls the sine wave volumes at lower frequencies, and the right side controls higher frequencies."))];
                     }
                     break;
                 case "effects":
                     {
-                        message = div$5(h2$4("Effects"), p("UltraBox has many different kinds of special effects you can add to instruments. You can turn on multiple effects at once, and they can be configured individually. Try them all out!"));
+                        this.messages = [div$5(h2$4("Effects"), p("UltraBox has many different kinds of special effects you can add to instruments. You can turn on multiple effects at once, and they can be configured individually. Try them all out!"))];
                     }
                     break;
                 case "drumsetEnvelope":
                     {
-                        message = div$5(h2$4("Drumset Envelope"), p("This drumset comes with a low-pass filter, and this setting can dynamically change the low-pass filter frequency over time. Each row in the pattern editor can have a different envelope shape."));
+                        this.messages = [div$5(h2$4("Drumset Envelope"), p("This drumset comes with a low-pass filter, and this setting can dynamically change the low-pass filter frequency over time. Each row in the pattern editor can have a different envelope shape."))];
                     }
                     break;
                 case "drumsetSpectrum":
                     {
-                        message = div$5(h2$4("Drumset Spectrum"), p("This setting allows you to draw your own noise spectrum! This is good for making drumsets. Each row in the pattern editor gets its own spectrum."), p("The left side of the spectrum editor controls the noise energy at lower frequencies, and the right side controls higher frequencies."));
+                        this.messages = [div$5(h2$4("Drumset Spectrum"), p("This setting allows you to draw your own noise spectrum! This is good for making drumsets. Each row in the pattern editor gets its own spectrum."), p("The left side of the spectrum editor controls the noise energy at lower frequencies, and the right side controls higher frequencies."))];
                     }
                     break;
                 case "chorus":
                     {
-                        message = div$5(h2$4("Chorus"), p("The chorus effect combines multiple copies of the instrument's sound and adds a bit of vibrato to simulate an ensemble of instruments or voices. Drag the slider to control how much chorus is added."));
+                        this.messages = [div$5(h2$4("Chorus"), p("The chorus effect combines multiple copies of the instrument's sound and adds a bit of vibrato to simulate an ensemble of instruments or voices. Drag the slider to control how much chorus is added."))];
                     }
                     break;
                 case "echoSustain":
                     {
-                        message = div$5(h2$4("Echo Volume"), p("The echo effect repeats the instrument's sound after a delay. Each echo is a little bit quieter than the last, and this setting controls how much quieter."));
+                        this.messages = [div$5(h2$4("Echo Volume"), p("The echo effect repeats the instrument's sound after a delay. Each echo is a little bit quieter than the last, and this setting controls how much quieter."))];
                     }
                     break;
                 case "echoDelay":
                     {
-                        message = div$5(h2$4("Echo Delay"), p("The echo effect repeats the instrument's sound after a delay, and this setting controls how long the delay is."));
+                        this.messages = [div$5(h2$4("Echo Delay"), p("The echo effect repeats the instrument's sound after a delay, and this setting controls how long the delay is."))];
                     }
                     break;
                 case "pitchShift":
                     {
-                        message = div$5(h2$4("Pitch Shift"), p("This setting makes instruments play higher or lower pitches than the ones displayed in the pattern editor. Be careful that you don't confuse yourself!"), p("You can combine this with envelopes to bend pitch over time, or play multiple simultaneous instruments with different pitch shifts for interesting layered sounds."), p("The intervals created by this setting are in \"just intonation\" which means they stay in phase with the original pitch instead of shifting in and out of phase over time. If you want the shifting, add the detune effect!"));
+                        this.messages = [div$5(h2$4("Pitch Shift"), p("This setting makes instruments play higher or lower pitches than the ones displayed in the pattern editor. Be careful that you don't confuse yourself!"), p("You can combine this with envelopes to bend pitch over time, or play multiple simultaneous instruments with different pitch shifts for interesting layered sounds."), p("The intervals created by this setting are in \"just intonation\" which means they stay in phase with the original pitch instead of shifting in and out of phase over time. If you want the shifting, add the detune effect!"))];
                     }
                     break;
                 case "detune":
                     {
-                        message = div$5(h2$4("Detune"), p("This setting slightly adjusts the frequency of notes played by the instrument. You can use a little bit to add a pleasing shifting sound similar to the \"unison\" feature when combined with other instruments. If you use too much, then the instrument may sound unpleasantly out-of-tune."));
+                        this.messages = [div$5(h2$4("Detune"), p("This setting slightly adjusts the frequency of notes played by the instrument. You can use a little bit to add a pleasing shifting sound similar to the \"unison\" feature when combined with other instruments. If you use too much, then the instrument may sound unpleasantly out-of-tune."))];
                     }
                     break;
                 case "distortion":
                     {
-                        message = div$5(h2$4("Distortion"), p("This is the famous electric guitar effect! However, there are some things to be aware of."), p("First, most chords don't sound right when combined with heavy distortion. The only chords commonly used with distorted electric guitars are \"power chords\" which consist of a root note, a \"fifth\" note above that, and/or any octaves of those two notes."), p("Second, the distortion sound depends a lot on filtering. In particular, I recommend enabling the note filter effect, and adding both high-pass and low-pass points to the note filter. (Note filters are applied first, then distortion which transforms the sound based on that filtering, then the EQ filter is applied last.)"), p("Finally, I recommend adjusting the fade-out setting to allow the end of each note to overlap a little bit with the beginning of the next, but not too much!"));
+                        this.messages = [div$5(h2$4("Distortion"), p("This is the famous electric guitar effect! However, there are some things to be aware of."), p("First, most chords don't sound right when combined with heavy distortion. The only chords commonly used with distorted electric guitars are \"power chords\" which consist of a root note, a \"fifth\" note above that, and/or any octaves of those two notes."), p("Second, the distortion sound depends a lot on filtering. In particular, I recommend enabling the note filter effect, and adding both high-pass and low-pass points to the note filter. (Note filters are applied first, then distortion which transforms the sound based on that filtering, then the EQ filter is applied last.)"), p("Finally, I recommend adjusting the fade-out setting to allow the end of each note to overlap a little bit with the beginning of the next, but not too much!"))];
                     }
                     break;
                 case "bitcrusherQuantization":
                     {
-                        message = div$5(h2$4("Bitcrusher Quantization"), p("This effect makes stuff sounds harsher, artificial, and \"low quality\", which is great if that's what you're going for!"));
+                        this.messages = [div$5(h2$4("Bitcrusher Quantization"), p("This effect makes stuff sounds harsher, artificial, and \"low quality\", which is great if that's what you're going for!"))];
                     }
                     break;
                 case "bitcrusherFreq":
                     {
-                        message = div$5(h2$4("Frequency Quantization"), p("The bitcrusher effect comes with an additional frequency quantization effect! This is a fun one to play with, especially when combined with the note filter effect."), p("Every other notch on this slider is aligned with the currently selected key of the song, and the in-between notches are aligned with the tritones of the key."));
+                        this.messages = [div$5(h2$4("Frequency Quantization"), p("The bitcrusher effect comes with an additional frequency quantization effect! This is a fun one to play with, especially when combined with the note filter effect."), p("Every other notch on this slider is aligned with the currently selected key of the song, and the in-between notches are aligned with the tritones of the key."))];
                     }
                     break;
                 case "envelopes":
                     {
-                        message = div$5(h2$4("Envelopes"), p("Envelopes are a way to dynamically adjust various other settings over time, usually based on how long the note lasts. Press the + button to add an envelope, then use the menus below to select which setting to control and the curve of the envelope. Try different combinations to see how they sound!"), p("Most envelope curves restart from the beginning every time a new note plays. The \"note size\" option is based on the note width as drawn in the pattern editor."), p("Envelope curves move in the range from 0 to 1 (or vice versa), where 0 means as quiet as possible and 1 is the same as the corresponding position selected in the instrument settings above. If multiple envelopes are targetting the same setting, they are multiplied before applying to the setting."));
+                        this.messages = [div$5(h2$4("Envelopes"), p("Envelopes are a way to dynamically adjust various other settings over time, usually based on how long the note lasts. Press the + button to add an envelope, then use the menus below to select which setting to control and the curve of the envelope. Try different combinations to see how they sound!"), p("Most envelope curves restart from the beginning every time a new note plays. The \"note size\" option is based on the note width as drawn in the pattern editor."), p("Envelope curves move in the range from 0 to 1 (or vice versa), where 0 means as quiet as possible and 1 is the same as the corresponding position selected in the instrument settings above. If multiple envelopes are targetting the same setting, they are multiplied before applying to the setting."))];
                     }
                     break;
                 case "discreteEnvelope":
                     {
-                        message = div$5(h2$4("Use Discrete Envelopes?"), p("Envelopes are usually interpolated, meaning they change continuously and smoothly. This setting, when ticked, makes envelopes not interpolate. It's a small difference, but can be helpful for some chip noises, and it's most noticeable with the 'blip' transitions."));
+                        this.messages = [div$5(h2$4("Use Discrete Envelopes?"), p("Envelopes are usually interpolated, meaning they change continuously and smoothly. This setting, when ticked, makes envelopes not interpolate. It's a small difference, but can be helpful for some chip noises, and it's most noticeable with the 'blip' transitions."))];
                     }
                     break;
                 case "envelopeSpeed":
                     {
-                        message = div$5(h2$4("Envelope Speed"), p("This setting controls the speed of ALL envelopes for the instrument. Each envelope 'plays' at a certain speed, and this slider can scale it to play faster or slower. Use this to fine-tune your tremolo or how fast something decays to get just the right effect."), p("Note that, while this setting is limited in the sense that it controls all envelopes at once, you can still achieve a variety of outcomes by trying combinations of modes of each envelope type, which typically differ only in speed."));
+                        this.messages = [div$5(h2$4("Envelope Speed"), p("This setting controls the speed of ALL envelopes for the instrument. Each envelope 'plays' at a certain speed, and this slider can scale it to play faster or slower. Use this to fine-tune your tremolo or how fast something decays to get just the right effect."), p("Note that, while this setting is limited in the sense that it controls all envelopes at once, you can still achieve a variety of outcomes by trying combinations of modes of each envelope type, which typically differ only in speed."))];
                     }
                     break;
                 case "usedInstrument":
                     {
-                        message = div$5(h3("'Is this instrument used somewhere else?'"), p("This indicator will light up when the instrument you're currently looking at is used in another place in your song (outside the selection)."), p("This can be useful when you're not sure if you've used the instrument before and making edits carelessly could change other parts of the song."));
+                        this.messages = [div$5(h3("'Is this instrument used somewhere else?'"), p("This indicator will light up when the instrument you're currently looking at is used in another place in your song (outside the selection)."), p("This can be useful when you're not sure if you've used the instrument before and making edits carelessly could change other parts of the song."))];
                     }
                     break;
                 case "usedPattern":
                     {
-                        message = div$5(h3("'Is this pattern used somewhere else?'"), p("This indicator will light up when the pattern you're currently looking at is used in another place in your song (outside the selection)."), p("This can be useful when you're not sure if you've used the pattern before and making edits carelessly could change other parts of the song."));
+                        this.messages = [div$5(h3("'Is this pattern used somewhere else?'"), p("This indicator will light up when the pattern you're currently looking at is used in another place in your song (outside the selection)."), p("This can be useful when you're not sure if you've used the pattern before and making edits carelessly could change other parts of the song."))];
                     }
                     break;
                 case "modChannel":
                     {
-                        message = div$5(h2$4("Modulator Channel"), p("Modulators can be used to change settings in your song automatically over time. This technique is also known as automation."), p("This setting controls which channel the modulators will take effect for. If you choose 'Song', you can change song-wide settings too!"));
+                        this.messages = [div$5(h2$4("Modulator Channel"), p("Modulators can be used to change settings in your song automatically over time. This technique is also known as automation."), p("This setting controls which channel the modulators will take effect for. If you choose 'Song', you can change song-wide settings too!"))];
                     }
                     break;
                 case "modInstrument":
                     {
-                        message = div$5(h2$4("Modulator Instrument"), p("Modulators can be used to change settings in your song automatically over time. This technique is also known as automation."), p("This setting controls which instrument your modulator will apply to within the given channel you've chosen."), p("If you choose 'all', every instrument in the channel will be affected. If you choose 'active', just the current ones used in this pattern will be instead."), p("Note that with 'all' or 'active', effects will only be applied to instruments that the effect is applicable on. For example if an instrument does not have panning effects, modulating panning will not affect it."));
+                        this.messages = [div$5(h2$4("Modulator Instrument"), p("Modulators can be used to change settings in your song automatically over time. This technique is also known as automation."), p("This setting controls which instrument your modulator will apply to within the given channel you've chosen."), p("If you choose 'all', every instrument in the channel will be affected. If you choose 'active', just the current ones used in this pattern will be instead."), p("Note that with 'all' or 'active', effects will only be applied to instruments that the effect is applicable on. For example if an instrument does not have panning effects, modulating panning will not affect it."))];
                     }
                     break;
                 case "modSet":
                     {
-                        message = div$5(h2$4("Modulator Setting"), p("This is the parameter that you want to change with this modulator. For example, if you set this to 'Tempo', you can speed up or slow down your song by laying notes in the pattern editor."), p("Note that you'll see different options if your channel is set to 'Song' versus a channel number. With 'Song', you'll see song-wide settings such as tempo. With a channel, you'll see specific instrument settings. Adding more effects to the instrument causes modulators for them to be available, so be sure to experiment!"), p("Most modulators behave as you'd expect and work just as if you were moving their associated slider. Click the '?' when you have a setting selected to get more info about it!"));
+                        this.messages = [div$5(h2$4("Modulator Setting"), p("This is the parameter that you want to change with this modulator. For example, if you set this to 'Tempo', you can speed up or slow down your song by laying notes in the pattern editor."), p("Note that you'll see different options if your channel is set to 'Song' versus a channel number. With 'Song', you'll see song-wide settings such as tempo. With a channel, you'll see specific instrument settings. Adding more effects to the instrument causes modulators for them to be available, so be sure to experiment!"), p("Most modulators behave as you'd expect and work just as if you were moving their associated slider. Click the '?' when you have a setting selected to get more info about it!"))];
                     }
                     break;
                 case "modFilter":
                     {
-                        message = div$5(h2$4("Filter Target"), p("This setting specifies which parameter of your targeted filter you would like to change."), p("With the 'morph' setting, the note value for your modulator represents the number of a subfilter to 'morph' into over time. For example, dragging a note from 0 to 7 will morph from your main filter to the 7th subfilter. To change how your subfilters are set up, click the '+' button on the target filter."), p("With a Dot setting, you can fine-tune the exact location of every dot on your filter graph. Note that this is extremely intensive if you want to modulate all dots - a morph is better in that case - but this can come in handy for small adjustments."));
+                        this.messages = [div$5(h2$4("Filter Target"), p("This setting specifies which parameter of your targeted filter you would like to change."), p("With the 'morph' setting, the note value for your modulator represents the number of a subfilter to 'morph' into over time. For example, dragging a note from 0 to 7 will morph from your main filter to the 7th subfilter. To change how your subfilters are set up, click the '+' button on the target filter."), p("With a Dot setting, you can fine-tune the exact location of every dot on your filter graph. Note that this is extremely intensive if you want to modulate all dots - a morph is better in that case - but this can come in handy for small adjustments."))];
                     }
                     break;
                 case "transitionBar":
                     {
-                        message = div$5(h2$4("Tie Notes Over Bars"), p("With this option ticked, notes won't transition across bars if you put notes with the same pitches at the start of the next bar. Instead they will 'tie over' and sound like one long note."));
+                        this.messages = [div$5(h2$4("Tie Notes Over Bars"), p("With this option ticked, notes won't transition across bars if you put notes with the same pitches at the start of the next bar. Instead they will 'tie over' and sound like one long note."))];
                     }
                     break;
                 case "clicklessTransition":
                     {
-                        message = div$5(h2$4("Clickless Transition"), p("Sometimes, seamless and other transition types can make audible 'clicks' when changing between notes. Ticking this option will cause those clicks to be silenced as much as possible."));
+                        this.messages = [div$5(h2$4("Clickless Transition"), p("Sometimes, seamless and other transition types can make audible 'clicks' when changing between notes. Ticking this option will cause those clicks to be silenced as much as possible."))];
                     }
                     break;
                 case "aliases":
                     {
-                        message = div$5(h2$4("Aliasing"), p("UltraBox applies a technique called 'anti-aliasing' to instruments normally to help them sound cleaner even at high frequencies and low sample rates."), p("When this setting is ticked that technique is disabled, so you may hear strange audio artifacts especially at high pitches and when bending notes. However, this can lend a grungy sound to an instrument that could be desirable."));
+                        this.messages = [div$5(h2$4("Aliasing"), p("UltraBox applies a technique called 'anti-aliasing' to instruments normally to help them sound cleaner even at high frequencies and low sample rates."), p("When this setting is ticked that technique is disabled, so you may hear strange audio artifacts especially at high pitches and when bending notes. However, this can lend a grungy sound to an instrument that could be desirable."))];
                     }
                     break;
                 case "operatorWaveform":
                     {
-                        message = div$5(h2$4("Operator Waveform"), p('This setting controls the what kind of sound wave an individual FM wave uses.'), p('By defualt the FM synth uses sinewaves.'));
+                        this.messages = [div$5(h2$4("Operator Waveform"), p('This setting controls the what kind of sound wave an individual FM wave uses.'), p('By defualt the FM synth uses sinewaves.'))];
                     }
                     break;
                 case "filterType":
                     {
-                        message = div$5(h2$4("Filter Type"), p('Toggling these buttons lets you choose between a simple filter interface with two sliders, or the more advanced filter graph.'), p('The two-slider version controls a single low-pass filter and was used in legacy versions. It is not as powerful, but if you feel overwhelmed you can start with this.'), p('Note that switching from the simple interface to the advanced interface will convert your current settings, so you can also use it as a basis for later tweaking.'));
+                        this.messages = [div$5(h2$4("Filter Type"), p('Toggling these buttons lets you choose between a simple filter interface with two sliders, or the more advanced filter graph.'), p('The two-slider version controls a single low-pass filter and was used in legacy versions. It is not as powerful, but if you feel overwhelmed you can start with this.'), p('Note that switching from the simple interface to the advanced interface will convert your current settings, so you can also use it as a basis for later tweaking.'))];
                     }
                     break;
                 case "filterCutoff":
                     {
-                        message = div$5(h2$4("Low-Pass Filter Cutoff Frequency"), p("The lowest setting feels \"muffled\" or \"dark\", and the highest setting feels \"harsh\" or \"bright\"."), p("Most sounds include a range of frequencies from low to high. UltraBox instruments have a filter that allows the lowest frequencies to pass through at full volume, but can reduce the volume of the higher frequencies that are above a cutoff frequency. This setting controls the cutoff frequency and thus the range of higher frequencies that are reduced."), p("This cutoff setting also determines which frequency resonates when the resonance peak setting is used."));
+                        this.messages = [div$5(h2$4("Low-Pass Filter Cutoff Frequency"), p("The lowest setting feels \"muffled\" or \"dark\", and the highest setting feels \"harsh\" or \"bright\"."), p("Most sounds include a range of frequencies from low to high. UltraBox instruments have a filter that allows the lowest frequencies to pass through at full volume, but can reduce the volume of the higher frequencies that are above a cutoff frequency. This setting controls the cutoff frequency and thus the range of higher frequencies that are reduced."), p("This cutoff setting also determines which frequency resonates when the resonance peak setting is used."))];
                     }
                     break;
                 case "filterResonance":
                     {
-                        message = div$5(h2$4("Low-Pass Filter Resonance Peak"), p("Increasing this setting emphasizes a narrow range of frequencies, based on the position of the filter cutoff setting. This can be used to imitate the resonant bodies of acoustic instruments and other interesting effects."), p("The filter preserves the volume of frequencies that are below the cutoff frequency, and reduces the volume of frequencies that are above the cutoff. If this setting is used, the filter also increases the volume of frequencies that are near the cutoff."));
+                        this.messages = [div$5(h2$4("Low-Pass Filter Resonance Peak"), p("Increasing this setting emphasizes a narrow range of frequencies, based on the position of the filter cutoff setting. This can be used to imitate the resonant bodies of acoustic instruments and other interesting effects."), p("The filter preserves the volume of frequencies that are below the cutoff frequency, and reduces the volume of frequencies that are above the cutoff. If this setting is used, the filter also increases the volume of frequencies that are near the cutoff."))];
                     }
                     break;
                 case "loopControls":
                     {
-                        message = div$5(h2$4("Loop Controls"), p("This enables the use of parameters that control how a chip wave should repeat."));
+                        this.messages = [div$5(h2$4("Loop Controls"), p("This enables the use of parameters that control how a chip wave should repeat."))];
                     }
                     break;
                 case "loopMode":
                     {
-                        message = div$5(h2$4("Loop Mode"), p("This sets the way the chip wave loops when its ends are reached."), p("The \"Loop\" mode is the default: when the end of the loop is reached, it will jump back to the starting point of the loop."), p("The \"Ping-Pong\" mode starts playing the chip wave backwards when the end of the loop is reached. Once it reaches the start of the loop, it will start playing forwards again, endlessly going back and forth."), p("The \"Play Once\" mode stops the chip wave once the end is reached (or the start of the loop, if it's playing backwards)."), p("The \"Play Loop Once\" mode stops the chip wave once the end of the loop is reached (or the start of the loop, if it's playing backwards)."));
+                        this.messages = [div$5(h2$4("Loop Mode"), p("This sets the way the chip wave loops when its ends are reached."), p("The \"Loop\" mode is the default: when the end of the loop is reached, it will jump back to the starting point of the loop."), p("The \"Ping-Pong\" mode starts playing the chip wave backwards when the end of the loop is reached. Once it reaches the start of the loop, it will start playing forwards again, endlessly going back and forth."), p("The \"Play Once\" mode stops the chip wave once the end is reached (or the start of the loop, if it's playing backwards)."), p("The \"Play Loop Once\" mode stops the chip wave once the end of the loop is reached (or the start of the loop, if it's playing backwards)."))];
                     }
                     break;
                 case "loopStart":
                     {
-                        message = div$5(h2$4("Loop Start Point"), p("This specifies where the loop region of the chip wave starts. It's measured in \"samples\", or rather, it refers to a point on a waveform."), p("Be careful with tiny loop sizes (especially combined with high pitches), they may re-introduce aliasing even if the \"Aliasing\" checkbox is unchecked."));
+                        this.messages = [div$5(h2$4("Loop Start Point"), p("This specifies where the loop region of the chip wave starts. It's measured in \"samples\", or rather, it refers to a point on a waveform."), p("Be careful with tiny loop sizes (especially combined with high pitches), they may re-introduce aliasing even if the \"Aliasing\" checkbox is unchecked."))];
                     }
                     break;
                 case "loopEnd":
                     {
-                        message = div$5(h2$4("Loop End Point"), p("This specifies where the loop region of the chip wave ends. It's measured in \"samples\", or rather, it refers to a point on a waveform."), p("The button next to the input box sets this to end of the chip wave."), p("Be careful with tiny loop sizes (especially combined with high pitches), they may re-introduce aliasing even if the \"Aliasing\" checkbox is unchecked."));
+                        this.messages = [div$5(h2$4("Loop End Point"), p("This specifies where the loop region of the chip wave ends. It's measured in \"samples\", or rather, it refers to a point on a waveform."), p("The button next to the input box sets this to end of the chip wave."), p("Be careful with tiny loop sizes (especially combined with high pitches), they may re-introduce aliasing even if the \"Aliasing\" checkbox is unchecked."))];
                     }
                     break;
                 case "offset":
                     {
-                        message = div$5(h2$4("Offset"), p("This specifies where the chip wave should start playing from. You can use this to chop up a large sample, to say, turn a drum loop into a drum kit! It's measured in \"samples\", or rather, it refers to a point on a waveform."));
+                        this.messages = [div$5(h2$4("Offset"), p("This specifies where the chip wave should start playing from. You can use this to chop up a large sample, to say, turn a drum loop into a drum kit! It's measured in \"samples\", or rather, it refers to a point on a waveform."))];
                     }
                     break;
                 case "backwards":
                     {
-                        message = div$5(h2$4("Backwards"), p("When set, the chip wave will start playing backwards. After checking this, you may want to adjust the offset to start from a different point that makes sense for this mode."));
+                        this.messages = [div$5(h2$4("Backwards"), p("When set, the chip wave will start playing backwards. After checking this, you may want to adjust the offset to start from a different point that makes sense for this mode."))];
                     }
                     break;
                 case "decimalOffset":
                     {
-                        message = div$5(h2$4("Decimal Offset"), p("The decimal offset is subtracted from the pulse width value, enabling the use of numbers such as 12.5 or 6.25. This could be useful if you're trying to recreate the sound of old soundchips."));
+                        this.messages = [div$5(h2$4("Decimal Offset"), p("The decimal offset is subtracted from the pulse width value, enabling the use of numbers such as 12.5 or 6.25. This could be useful if you're trying to recreate the sound of old soundchips."))];
                     }
                     break;
                 case "unisonVoices":
                     {
-                        message = div$5(h2$4("Unison Voices"), p("This setting controls how many voices there are in a unison. Unisons such as \"none\" or \"detune\" use 1 voice, while most other unisons use 2 voices."));
+                        this.messages = [div$5(h2$4("Unison Voices"), p("This setting controls how many voices there are in a unison. Unisons such as \"none\" or \"detune\" use 1 voice, while most other unisons use 2 voices."))];
                     }
                     break;
                 case "unisonSpread":
                     {
-                        message = div$5(h2$4("Unison Spread"), p("This setting controls the distance between the two voices, in semitones. A small amount of spread causes the voice's waves to shift in and out from each other, causing a shimmering effect. Larger spread will cause the voices to act like separate notes."));
+                        this.messages = [div$5(h2$4("Unison Spread"), p("This setting controls the distance between the two voices, in semitones. A small amount of spread causes the voice's waves to shift in and out from each other, causing a shimmering effect. Larger spread will cause the voices to act like separate notes."))];
                     }
                     break;
                 case "unisonOffset":
                     {
-                        message = div$5(h2$4("Unison Offset"), p("This setting controls the detune applied to BOTH voices, in semitones."));
+                        this.messages = [div$5(h2$4("Unison Offset"), p("This setting controls the detune applied to BOTH voices, in semitones."))];
                     }
                     break;
                 case "unisonExpression":
                     {
-                        message = div$5(h2$4("Unison Volume"), p("This setting controls the unison volume. Use this if the unison makes your instrument too loud in comparison to other instruments."), p("If this is set to a negative value, it will invert the wave!"));
+                        this.messages = [div$5(h2$4("Unison Volume"), p("This setting controls the unison volume. Use this if the unison makes your instrument too loud in comparison to other instruments."), p("If this is set to a negative value, it will invert the wave!"))];
                     }
                     break;
                 case "unisonSign":
                     {
-                        message = div$5(h2$4("Unison Sign"), p("This setting is a volume multiplier applied to the second voice. This setting will only work correctly with two voices."));
+                        this.messages = [div$5(h2$4("Unison Sign"), p("This setting is a volume multiplier applied to the second voice. This setting will only work correctly with two voices."))];
                     }
                     break;
                 default:
@@ -40256,16 +40741,18 @@ You should be redirected to the song at:<br /><br />
                                 .replace("$HI", "" + (Config.modulators[modulator].convertRealFactor + Config.modulators[modulator].maxRawVol))));
                         }
                         pList[pList.length - 1].style.setProperty("color", "var(--secondary-text)");
-                        message = div$5(h2$4(Config.modulators[modulator].promptName), pList);
+                        this.messages = [div$5(h2$4(Config.modulators[modulator].promptName), pList)];
                         break;
                     }
                     else {
                         throw new Error("Unhandled TipPrompt type: " + type);
                     }
             }
-            this.container = div$5({ class: "prompt", style: "width: 300px;" }, message, this._closeButton);
-            setTimeout(() => this._closeButton.focus());
+            this._prevButton.addEventListener("click", this._prevPage);
+            this._nextButton.addEventListener("click", this._nextPage);
             this._closeButton.addEventListener("click", this._close);
+            this.container = div$5({ class: "prompt", style: "width: 300px;" });
+            this._changePage(0);
         }
     }
 
@@ -46880,37 +47367,6 @@ You should be redirected to the song at:<br /><br />
             this._changeTrack = null;
             this._changeInstrument = null;
             this._changeReorder = null;
-            this.multWave = (f1, f2, amp) => `(sin(pi/(${f1} + num/len*(${f2}-${f1})) * num)*${amp} + 1) / 2`;
-            this.expCurve = (len) => { const arr = []; for (let i = 0; i < len; i++) {
-                arr.push(Math.pow((i / (len - 1)), 2));
-            } return arr; };
-            this.stepAcrossPresets = {
-                'fade in': { volMult: { array: [0, 1], per: 'time' } },
-                'fade out': { volMult: { array: [1, 0], per: 'time' } },
-                'studio fade in': { volMult: { array: this.expCurve(5), per: 'time' } },
-                'studio fade out': { volMult: { array: this.expCurve(5).reverse(), per: 'time' } },
-                'mod-studio fade in': { volMult: { array: ['pow(num / (len - 1), 2)'], per: 'time' } },
-                'mod-studio fade out': { volMult: { array: ['1 - pow(num / (len - 1), 2)'], per: 'time' } },
-                'gain start': { volAdd: { array: ['num === 0 ? (1 / (maxval - minval)) : 0'], per: 'time' }, volMult: { array: [2, 1], per: 'time' } },
-                'gain end': { volAdd: { array: ['num === 0 ? (1 / (maxval - minval)) : 0'], per: 'time' }, volMult: { array: [1, 2], per: 'time' } },
-                'volume up': { volAdd: { array: ['1 / (maxval - minval)'], per: 'pin' } },
-                'volume down': { volAdd: { array: ['-1 / (maxval - minval)'], per: 'pin' } },
-                'volume double': { volMult: { array: [2], per: 'pin' } },
-                'volume halve': { volMult: { array: [0.5], per: 'pin' } },
-                'max contrast': { volAdd: { array: ['x/biggest * (1 - biggest)'], per: 'pin' } },
-                'contrast double': { volAdd: { array: ['(x-average) * 2'], per: 'pin' } },
-                'contrast halve': { volAdd: { array: ['(x-average) * -0.5'], per: 'pin' } },
-                'flip volume': { volAdd: { array: ['(x-average) * -2'], per: 'pin' } },
-                'invert': { volAdd: { array: ['1 - x - x'], per: 'pin' } },
-                'volume alternate': { volAdd: { array: ['(num % 2 === 0 ? 1 : -1) / (maxval - minval)'], per: 'note', type: 'cycle' } },
-                'volume interrupt': { volMult: { array: ['floor(random() * 1.5 + 0.5) === 0 ? 0.5 : 1'], per: 'time' } },
-                'volume max': { volAdd: { array: [1], per: 'note' } },
-                'wobble fast': { volMult: { array: [this.multWave(4, 4, 0.5)], per: 'time' } },
-                'wobble med': { volMult: { array: [this.multWave(8, 8, 0.5)], per: 'time' } },
-                'wobble slow': { volMult: { array: [this.multWave(16, 16, 0.5)], per: 'time' } },
-                'wobble slow-fast': { volMult: { array: [this.multWave(16, 4, 0.5)], per: 'time' } },
-                'nonmod pitch alternate': { pitchAdd: { array: [-1, 1], per: 'note', type: 'cycle' } }
-            };
         }
         toJSON() {
             return {
@@ -47645,36 +48101,35 @@ You should be redirected to the song at:<br /><br />
             this._changeTrack.append(new ChangeTrackSelection(this._doc, newX0, newX1, newY0, newY1));
             this._doc.record(this._changeTrack, canReplaceLastChange);
         }
-        noteMerge(adjacentOnly) {
+        noteMerge(adjacentOnly, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
-                if (this._doc.song.getChannelIsMod(channelIndex)) {
-                    continue;
-                }
+                const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    if (adjacentOnly)
-                        this._changeNoteOperations.append(new ChangeMergeAcrossAdjacent(this._doc, pattern));
-                    else
-                        this._changeNoteOperations.append(new ChangeMergeAcross(this._doc, pattern));
+                    if (adjacentOnly || this._doc.song.getChannelIsMod(channelIndex)) {
+                        this._changeNoteOperations.append(new ChangeMergeAcrossAdjacent(this._doc, pattern, undefined, undefined, pitchIfMod));
+                    }
+                    else {
+                        this._changeNoteOperations.append(new ChangeMergeAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                    }
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteBridge(doBends) {
+        noteBridge(grow, doBends, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
-                if (this._doc.song.getChannelIsMod(channelIndex)) {
-                    continue;
-                }
+                const isMod = this._doc.song.getChannelIsMod(channelIndex);
                 const isNoise = this._doc.song.getChannelIsNoise(channelIndex);
+                const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    const bridgeOp = new ChangeBridgeAcross(this._doc, pattern, doBends, isNoise);
+                    const bridgeOp = new ChangeBridgeAcross(this._doc, pattern, grow, doBends && !isMod, isNoise, undefined, undefined, pitchIfMod);
                     this._changeNoteOperations.append(bridgeOp);
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteSplitAcross(cuts, absolute, perNote) {
+        noteSplitAcross(cuts, absolute, perNote, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             let x1 = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0;
             let x2 = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern;
@@ -47682,46 +48137,49 @@ You should be redirected to the song at:<br /><br />
                 cuts = Math.max(Math.floor((x2 - x1) / cuts) - 1, 1);
             }
             for (const channelIndex of this._eachSelectedChannel()) {
+                const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     if (perNote) {
-                        const notesCopy = pattern.notes.concat();
+                        const notesCopy = pitchIfMod === undefined
+                            ? pattern.notes.concat()
+                            : pattern.notes.filter(o => o.pitches.length === 1 && o.pitches[0] === pitchIfMod);
                         for (const note of notesCopy) {
                             const adjustedX1 = Math.max(x1, note.start);
                             const adjustedX2 = Math.min(x2, note.end);
                             const adjustedCuts = absolute ? Math.max(Math.floor((adjustedX2 - adjustedX1) / cuts) - 1, 1) : cuts;
-                            this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, adjustedCuts, adjustedX1, adjustedX2));
+                            this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, adjustedCuts, adjustedX1, adjustedX2, pitchIfMod));
                         }
                     }
                     else {
-                        this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, cuts, x1, x2));
+                        this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, cuts, x1, x2, pitchIfMod));
                     }
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteFlattenAcross(editor, avgPitch, vol) {
+        noteFlattenAcross(dontAveragePitch, vol, pitchIndex) {
             this._changeFlatten = new ChangeGroup();
             const x1 = (this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0);
             const x2 = (this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern);
             for (const channelIndex of this._eachSelectedChannel()) {
-                if (this._doc.song.getChannelIsMod(channelIndex)) {
-                    continue;
-                }
+                const isMod = this._doc.song.getChannelIsMod(channelIndex);
+                const isNoise = this._doc.song.getChannelIsNoise(channelIndex);
+                const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    let bounds = avgPitch ? undefined : getVerticalBounds(pattern.notes, x1, x2);
+                    let bounds = dontAveragePitch ? undefined : getVerticalBounds(pattern.notes, x1, x2);
                     for (let i = 0; i < pattern.notes.length; i++) {
                         const note = pattern.notes[i];
                         if (note.end > x1 && note.start < x2) {
                             if (vol) {
-                                if (this._doc.song.getChannelIsNoise(channelIndex)) {
-                                    this._changeFlatten.append(new ChangeStepAcross(editor, this._doc, channelIndex, pattern, { volAdd: { array: [1, 0], per: 'note' } }));
+                                if (isNoise) {
+                                    this._changeFlatten.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'note', add: [1, 0], onlyExistingPins: true }, undefined, undefined, pitchIfMod));
                                 }
                                 else {
-                                    this._changeFlatten.append(new ChangeStepAcross(editor, this._doc, channelIndex, pattern, this.stepAcrossPresets['volume max']));
+                                    this._changeFlatten.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'note', add: ['maxrange - minrange'], onlyExistingPins: true }, undefined, undefined, pitchIfMod));
                                 }
                             }
-                            else {
-                                this._changeFlatten.append(new ChangeStretchVerticalRelative(this._doc, channelIndex, pattern, 0, 0, avgPitch, note.start, note.end, bounds));
+                            else if (!isMod) {
+                                this._changeFlatten.append(new ChangeStretchVerticalRelative(this._doc, channelIndex, pattern, 0, 0, dontAveragePitch, note.start, note.end, bounds));
                             }
                         }
                     }
@@ -47729,86 +48187,70 @@ You should be redirected to the song at:<br /><br />
             }
             this._doc.record(this._changeFlatten);
         }
-        noteSpreadAcross(spreadPitch) {
+        noteSpreadAcross(spreadPitch, stackOnly, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
+                const isMod = this._doc.song.getChannelIsMod(this._doc.channel);
+                const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    if (spreadPitch) {
+                    if (stackOnly) {
+                        if (spreadPitch && !isMod) {
+                            this._changeNoteOperations.append(new ChangeStackBottomAcross(this._doc, pattern));
+                        }
+                        else if (!spreadPitch) {
+                            this._changeNoteOperations.append(new ChangeStackLeftAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                        }
+                    }
+                    else if (spreadPitch && !isMod) {
                         this._changeNoteOperations.append(new ChangeSpreadVertical(this._doc, pattern));
                     }
-                    else {
-                        this._changeNoteOperations.append(new ChangeSpreadAcross(this._doc, pattern));
+                    else if (!spreadPitch) {
+                        this._changeNoteOperations.append(new ChangeSpreadAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                     }
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteTapAcross() {
+        noteTapAcross(pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
+                const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._changeNoteOperations.append(new ChangeTapNotesAcross(this._doc, pattern));
+                    this._changeNoteOperations.append(new ChangeTapNotesAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteStepAcross(editor, data) {
+        noteStepAcross(data, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
+                const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._changeNoteOperations.append(new ChangeStepAcross(editor, this._doc, channelIndex, pattern, typeof data !== 'string' ? data : this.stepAcrossPresets[data]));
+                    this._changeNoteOperations.append(new ChangeStepAcross(this._doc, channelIndex, pattern, data, undefined, undefined, pitchIfMod));
                 }
             }
             this._doc.record(this._changeNoteOperations);
         }
-        noteMirrorAcross(isVertical) {
+        noteMirrorAcross(isVertical, pitchIndex) {
             this._changeNoteOperations = new ChangeGroup();
             const range = {
                 start: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0,
                 end: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern
             };
             for (const channelIndex of this._eachSelectedChannel()) {
-                if (this._doc.song.getChannelIsMod(channelIndex)) {
-                    continue;
-                }
+                const isMod = this._doc.song.getChannelIsMod(channelIndex);
+                const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     const vertRange = getVerticalBounds(pattern.notes, range.start, range.end);
-                    if (isVertical) {
+                    if (isVertical && !isMod) {
                         this._changeNoteOperations.append(new ChangeStretchVertical(this._doc, channelIndex, pattern, vertRange.max, vertRange.min));
                     }
-                    else {
-                        this._changeNoteOperations.append(new ChangeMirrorHorizontal(this._doc, pattern, false, range.start, range.end));
+                    if (!isVertical) {
+                        this._changeNoteOperations.append(new ChangeMirrorHorizontal(this._doc, pattern, false, range.start, range.end, pitchIfMod));
                     }
                 }
             }
             this._doc.record(this._changeNoteOperations);
-        }
-        noteStretchHorizontal(newX1, newX2) {
-            const canReplaceLastChange = this._doc.lastChangeWas(this._ChangeStretchHorizontal);
-            this._ChangeStretchHorizontal = new ChangeGroup();
-            for (const channelIndex of this._eachSelectedChannel()) {
-                for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._ChangeStretchHorizontal.append(new ChangeStretchHorizontal(this._doc, pattern, newX1, newX2));
-                }
-            }
-            this._doc.record(this._ChangeStretchHorizontal, canReplaceLastChange);
-        }
-        noteStretchVertical(yMin, yMax) {
-            const canReplaceLastChange = this._doc.lastChangeWas(this._changeFlatten);
-            this._changeFlatten = new ChangeGroup();
-            const bounds = {
-                start: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0,
-                end: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern
-            };
-            for (const channelIndex of this._eachSelectedChannel()) {
-                if (this._doc.song.getChannelIsMod(channelIndex)) {
-                    continue;
-                }
-                for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._changeFlatten.append(new ChangeStretchVertical(this._doc, channelIndex, pattern, yMin, yMax, undefined, bounds.start, bounds.end));
-                }
-            }
-            this._doc.record(this._changeFlatten, canReplaceLastChange);
         }
         transpose(upward, octave) {
             const canReplaceLastChange = this._doc.lastChangeWas(this._changeTranspose);
