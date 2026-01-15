@@ -10301,7 +10301,7 @@ var beepbox = (function (exports) {
             this.tick = 0;
             this.tickSampleCountdown = samplesPerTick;
             this.isAtStartOfTick = true;
-            if (this.loopRepeatCount != 0 && this.bar == Math.max(this.song.loopStart + this.song.loopLength, this.loopBarEnd)) {
+            if (this.loopRepeatCount != 0 && this.bar == Math.max(this.song.loopStart + this.song.loopLength, this.loopBarEnd + 1)) {
                 this.bar = this.song.loopStart;
                 if (this.loopBarStart != -1)
                     this.bar = this.loopBarStart;
@@ -11979,8 +11979,8 @@ var beepbox = (function (exports) {
                         useSpreadStart = (this.getModValue(Config.modulators.dictionary["spread"].index, channelIndex, tone.instrumentIndex, false)) / Config.supersawSpreadMax;
                         useSpreadEnd = (this.getModValue(Config.modulators.dictionary["spread"].index, channelIndex, tone.instrumentIndex, true)) / Config.supersawSpreadMax;
                     }
-                    const spreadSliderStart = useSpreadStart * envelopeStarts[39];
-                    const spreadSliderEnd = useSpreadEnd * envelopeEnds[39];
+                    const spreadSliderStart = Math.max(0, useSpreadStart) * envelopeStarts[39];
+                    const spreadSliderEnd = Math.max(0, useSpreadEnd) * envelopeEnds[39];
                     const averageSpreadSlider = (spreadSliderStart + spreadSliderEnd) * 0.5;
                     const curvedSpread = Math.pow(1.0 - Math.sqrt(Math.max(0.0, 1.0 - averageSpreadSlider)), 1.75);
                     for (let i = 0; i < Config.supersawVoiceCount; i++) {
