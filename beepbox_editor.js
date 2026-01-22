@@ -22891,12 +22891,12 @@ li.select2-results__option[role=group] > strong:hover {
 
     var TabSettingType;
     (function (TabSettingType) {
-        TabSettingType[TabSettingType["EditInstrument"] = 0] = "EditInstrument";
-        TabSettingType[TabSettingType["EditSelection"] = 1] = "EditSelection";
+        TabSettingType[TabSettingType["ChannelSettings"] = 0] = "ChannelSettings";
+        TabSettingType[TabSettingType["PatternControls"] = 1] = "PatternControls";
     })(TabSettingType || (TabSettingType = {}));
     const TabControls = {
-        [TabSettingType.EditInstrument]: { type: TabSettingType.EditInstrument, icon: '🎺︎' },
-        [TabSettingType.EditSelection]: { type: TabSettingType.EditSelection, icon: '⬚' }
+        [TabSettingType.ChannelSettings]: { type: TabSettingType.ChannelSettings, icon: '🎺︎' },
+        [TabSettingType.PatternControls]: { type: TabSettingType.PatternControls, icon: '🎼' }
     };
 
     function patternsContainSameInstruments(pattern1Instruments, pattern2Instruments) {
@@ -30131,6 +30131,8 @@ li.select2-results__option[role=group] > strong:hover {
         constructor(_doc) {
             this._doc = _doc;
             this.outputStarted = false;
+            this.stepStatusAutoAmp = 0;
+            this.stepStatusSynth = 1;
             this._fileName = input$d({ type: "text", style: "width: 10em;", value: Config.jsonFormat + "-Song", maxlength: 250, "autofocus": "autofocus" });
             this._computedSamplesLabel = div$i({ style: "width: 10em;" }, new Text("0:00"));
             this._enableIntro = input$d({ type: "checkbox" });
@@ -30141,14 +30143,19 @@ li.select2-results__option[role=group] > strong:hover {
             this._removeWhitespaceDiv = div$i({ style: "vertical-align: middle; align-items: center; justify-content: space-between; margin-bottom: 14px;" }, "Remove Whitespace: ", this._removeWhitespace);
             this._cancelButton = button$i({ class: "cancelButton" });
             this._exportButton = button$i({ class: "exportButton", style: "width:45%;" }, "Export");
+            this._autoAmplify = input$d({ style: `margin-right: 1rem;`, type: "checkbox" });
             this._outputProgressBar = div$i({ style: `width: 0%; background: ${ColorConfig.loopAccent}; height: 100%; position: absolute; z-index: 2;` });
             this._outputProgressLabel = div$i({ style: `position: relative; top: -1px; z-index: 3;` }, "0%");
             this._outputProgressContainer = div$i({ style: `height: 12px; background: ${ColorConfig.uiWidgetBackground}; display: block; position: relative; z-index: 1;` }, this._outputProgressBar, this._outputProgressLabel);
-            this.container = div$i({ class: "prompt noSelection", style: "width: 200px;" }, h2$g("Export Options"), div$i({ style: "display: flex; flex-direction: row; align-items: center; justify-content: space-between;" }, "File name:", this._fileName), div$i({ style: "display: flex; flex-direction: row; align-items: center; justify-content: space-between;" }, "Length:", this._computedSamplesLabel), div$i({ style: "display: table; width: 100%;" }, div$i({ style: "display: table-row;" }, div$i({ style: "display: table-cell;" }, "Intro:"), div$i({ style: "display: table-cell;" }, "Loop Count:"), div$i({ style: "display: table-cell;" }, "Outro:")), div$i({ style: "display: table-row;" }, div$i({ style: "display: table-cell; vertical-align: middle;" }, this._enableIntro), div$i({ style: "display: table-cell; vertical-align: middle;" }, this._loopDropDown), div$i({ style: "display: table-cell; vertical-align: middle;" }, this._enableOutro))), div$i({ class: "selectContainer", style: "width: 100%;" }, this._formatSelect), this._removeWhitespaceDiv, div$i({ style: "text-align: left;" }, "Exporting can be slow. Reloading the page or clicking the X will cancel it. Please be patient."), this._outputProgressContainer, div$i({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._exportButton), this._cancelButton);
+            this.container = div$i({ class: "prompt noSelection", style: "width: 200px;" }, h2$g("Export Options"), div$i({ style: "display: flex; flex-direction: row; align-items: center; justify-content: space-between;" }, "File name:", this._fileName), div$i({ style: "display: flex; flex-direction: row; align-items: center; justify-content: space-between;" }, "Length:", this._computedSamplesLabel), div$i({ style: "display: table; width: 100%;" }, div$i({ style: "display: table-row;" }, div$i({ style: "display: table-cell;" }, "Intro:"), div$i({ style: "display: table-cell;" }, "Loop Count:"), div$i({ style: "display: table-cell;" }, "Outro:")), div$i({ style: "display: table-row;" }, div$i({ style: "display: table-cell; vertical-align: middle;" }, this._enableIntro), div$i({ style: "display: table-cell; vertical-align: middle;" }, this._loopDropDown), div$i({ style: "display: table-cell; vertical-align: middle;" }, this._enableOutro))), div$i({ class: "selectContainer", style: "width: 100%;" }, this._formatSelect), div$i({}, this._autoAmplify, "Maximize volume"), this._removeWhitespaceDiv, div$i({ style: "text-align: left;" }, "Exporting can be slow. Reloading the page or clicking the X will cancel it. Please be patient."), this._outputProgressContainer, div$i({ style: "display: flex; flex-direction: row-reverse; justify-content: space-between;" }, this._exportButton), this._cancelButton);
             this._close = () => {
                 if (this.synth != null)
                     this.synth.renderingSong = false;
                 this.outputStarted = false;
+                this.stepStatusSynth = 1;
+                if (this.stepStatusAutoAmp !== 0) {
+                    this.stepStatusAutoAmp = 1;
+                }
                 this._doc.undo();
             };
             this.cleanUp = () => {
@@ -30168,6 +30175,7 @@ li.select2-results__option[role=group] > strong:hover {
                     return;
                 window.localStorage.setItem("exportFormat", this._formatSelect.value);
                 window.localStorage.setItem("exportWhitespace", this._removeWhitespace.value);
+                window.localStorage.setItem("exportAutoAmplify", this._autoAmplify.checked ? "1" : "0");
                 switch (this._formatSelect.value) {
                     case "wav":
                         this.outputStarted = true;
@@ -30217,6 +30225,10 @@ li.select2-results__option[role=group] > strong:hover {
             if (lastExportWhitespace != null) {
                 this._removeWhitespace.checked = lastExportWhitespace;
             }
+            const lastExportAutoAmplify = window.localStorage.getItem("exportAutoAmplify") !== "0";
+            if (lastExportAutoAmplify !== null) {
+                this._autoAmplify.checked = lastExportAutoAmplify;
+            }
             if (this._formatSelect.value == "json") {
                 this._removeWhitespaceDiv.style.display = "block";
             }
@@ -30237,6 +30249,9 @@ li.select2-results__option[role=group] > strong:hover {
             }
             else {
                 this._removeWhitespaceDiv.style.display = "none";
+            } });
+            this._autoAmplify.addEventListener("click", () => { if (!this.outputStarted) {
+                this.stepStatusAutoAmp = this._autoAmplify.checked ? 1 : 0;
             } });
             this.container.addEventListener("keydown", this._whenKeyPressed);
             this._fileName.value = _doc.song.title;
@@ -30279,20 +30294,61 @@ li.select2-results__option[role=group] > strong:hover {
             if (this.outputStarted == false) {
                 return;
             }
-            const samplesPerChunk = this.synth.samplesPerSecond * 5;
-            const currentFrame = this.currentChunk * samplesPerChunk;
-            const samplesInChunk = Math.min(samplesPerChunk, this.sampleFrames - currentFrame);
-            const tempSamplesL = new Float32Array(samplesInChunk);
-            const tempSamplesR = new Float32Array(samplesInChunk);
-            this.synth.renderingSong = true;
-            this.synth.synthesize(tempSamplesL, tempSamplesR, samplesInChunk);
-            this.recordedSamplesL.set(tempSamplesL, currentFrame);
-            this.recordedSamplesR.set(tempSamplesR, currentFrame);
-            this._outputProgressBar.style.setProperty("width", Math.round((this.currentChunk + 1) / this.totalChunks * 100.0) + "%");
-            this._outputProgressLabel.innerText = Math.round((this.currentChunk + 1) / this.totalChunks * 100.0) + "%";
-            this.currentChunk++;
-            if (this.currentChunk >= this.totalChunks) {
+            if (this.stepStatusSynth === 1) {
+                this.stepStatusSynth = 2;
+            }
+            if (this.stepStatusSynth === 3 && this.stepStatusAutoAmp === 1) {
+                this.stepStatusAutoAmp = 2;
+            }
+            if (this.stepStatusSynth === 2) {
+                const samplesPerChunk = this.synth.samplesPerSecond * 5;
+                const currentFrame = this.currentChunk * samplesPerChunk;
+                const samplesInChunk = Math.min(samplesPerChunk, this.sampleFrames - currentFrame);
+                const tempSamplesL = new Float32Array(samplesInChunk);
+                const tempSamplesR = new Float32Array(samplesInChunk);
+                this.synth.renderingSong = true;
+                this.synth.synthesize(tempSamplesL, tempSamplesR, samplesInChunk);
+                this.recordedSamplesL.set(tempSamplesL, currentFrame);
+                this.recordedSamplesR.set(tempSamplesR, currentFrame);
+                this._outputProgressBar.style.setProperty("width", Math.round((this.currentChunk + 1) / this.totalChunks * 100.0) + "%");
+                this._outputProgressLabel.innerText = Math.round((this.currentChunk + 1) / this.totalChunks * 100.0) + "%";
+                this.currentChunk++;
+                if (this.currentChunk >= this.totalChunks) {
+                    this.stepStatusSynth = 3;
+                    if (this.stepStatusAutoAmp !== 0) {
+                        this.stepStatusAutoAmp = 2;
+                    }
+                }
+            }
+            else if (this.stepStatusAutoAmp = 2) {
+                this._outputProgressLabel.innerText = "Amplifying...";
+                let max = 0;
+                for (let i = 0; i < this.recordedSamplesL.length; i++) {
+                    if (this.recordedSamplesL[i] > max) {
+                        max = this.recordedSamplesL[i];
+                    }
+                }
+                for (let i = 0; i < this.recordedSamplesR.length; i++) {
+                    if (this.recordedSamplesR[i] > max) {
+                        max = this.recordedSamplesR[i];
+                    }
+                }
+                const factor = Math.abs(1 / (max > 1 ? 1 : max < -1 ? -1 : max));
+                for (let i = 0; i < this.recordedSamplesL.length; i++) {
+                    this.recordedSamplesL[i] *= factor;
+                }
+                for (let i = 0; i < this.recordedSamplesR.length; i++) {
+                    this.recordedSamplesR[i] *= factor;
+                }
+                this.stepStatusAutoAmp = 3;
+            }
+            if (this.stepStatusSynth === 3 &&
+                (this.stepStatusAutoAmp === 0 || this.stepStatusAutoAmp === 3)) {
                 this.synth.renderingSong = false;
+                this.stepStatusSynth = 1;
+                if (this.stepStatusAutoAmp !== 0) {
+                    this.stepStatusAutoAmp = 1;
+                }
                 this._outputProgressLabel.innerText = "Encoding...";
                 if (this.thenExportTo == "wav") {
                     this._exportToWavFinish();
@@ -35972,6 +36028,61 @@ You should be redirected to the song at:<br /><br />
         }
         return indices;
     }
+    function search(doc, pattern, backwards, seekFrom, notes, gaps, edges, pitchIndex) {
+        let seek = seekFrom !== undefined ? seekFrom : doc.selection.patternSelectionActive
+            ? backwards ? doc.selection.patternSelectionStart : doc.selection.patternSelectionEnd
+            : 0;
+        let prev;
+        let note;
+        if (pattern.notes.length === 0 && edges) {
+            return { x1: 0, x2: doc.song.partsPerPattern };
+        }
+        if (backwards) {
+            for (let i = pattern.notes.length - 1; i >= 0; i--) {
+                note = pattern.notes[i];
+                if (note.start >= seek || (pitchIndex !== undefined && (note.pitches.length !== 1 || note.pitches[0] !== pitchIndex))) {
+                    continue;
+                }
+                prev = i < pattern.notes.length - 1 ? pattern.notes[i + 1] : undefined;
+                if (edges && !prev && note.end < seek) {
+                    return { x1: note.end, x2: doc.song.partsPerPattern };
+                }
+                if (gaps && prev && prev.start >= seek && note.end < seek) {
+                    return { x1: note.start, x2: prev.end };
+                }
+                if (notes) {
+                    return { x1: note.start, x2: note.end };
+                }
+                seek = note.start;
+            }
+        }
+        else {
+            for (let i = 0; i < pattern.notes.length; i++) {
+                note = pattern.notes[i];
+                if (note.end <= seek || (pitchIndex !== undefined && (note.pitches.length !== 1 || note.pitches[0] !== pitchIndex))) {
+                    continue;
+                }
+                prev = i > 0 ? pattern.notes[i - 1] : undefined;
+                if (edges && !prev && note.start > seek) {
+                    return { x1: 0, x2: note.start };
+                }
+                if (gaps && prev && prev.end <= seek && note.start > seek) {
+                    return { x1: prev.end, x2: note.start };
+                }
+                if (notes) {
+                    return { x1: note.start, x2: note.end };
+                }
+                seek = note.end;
+            }
+        }
+        if (edges) {
+            if (backwards) {
+                return { x1: pattern.notes[0].start, x2: 0 };
+            }
+            return { x1: pattern.notes[pattern.notes.length - 1].end, x2: doc.song.partsPerPattern };
+        }
+        return null;
+    }
 
     function makeEmptyReplacementElement(node) {
         const clone = node.cloneNode(false);
@@ -35984,6 +36095,14 @@ You should be redirected to the song at:<br /><br />
         SelectionResizeMode[SelectionResizeMode["WrapAround"] = 1] = "WrapAround";
         SelectionResizeMode[SelectionResizeMode["Stretch"] = 2] = "Stretch";
     })(SelectionResizeMode || (SelectionResizeMode = {}));
+    var SelectionResizeSnapping;
+    (function (SelectionResizeSnapping) {
+        SelectionResizeSnapping[SelectionResizeSnapping["Rhythm"] = 0] = "Rhythm";
+        SelectionResizeSnapping[SelectionResizeSnapping["SnapFeaturesIntersect"] = 1] = "SnapFeaturesIntersect";
+        SelectionResizeSnapping[SelectionResizeSnapping["SnapFeaturesUnion"] = 2] = "SnapFeaturesUnion";
+        SelectionResizeSnapping[SelectionResizeSnapping["SnapNotesIntersect"] = 3] = "SnapNotesIntersect";
+        SelectionResizeSnapping[SelectionResizeSnapping["SnapNotesUnion"] = 4] = "SnapNotesUnion";
+    })(SelectionResizeSnapping || (SelectionResizeSnapping = {}));
     class PatternCursor {
         constructor() {
             this.valid = false;
@@ -36048,7 +36167,8 @@ You should be redirected to the song at:<br /><br />
             this._draggingStartOfSelection = false;
             this._draggingEndOfSelection = false;
             this._draggingSelectionContents = false;
-            this._resizeSelectionMode = SelectionResizeMode.Move;
+            this._selectionResizing = SelectionResizeMode.Move;
+            this._selectionSnapping = SelectionResizeSnapping.SnapFeaturesUnion;
             this._unresizedSelection = { start: 0, end: 0 };
             this._dragTime = 0;
             this._dragPitch = 0;
@@ -36242,7 +36362,7 @@ You should be redirected to the song at:<br /><br />
                     return;
                 const continuousState = this._doc.lastChangeWas(this._dragChange);
                 if (this._mouseDown && continuousState && this._dragChange != null) {
-                    if (this._resizeSelectionMode === SelectionResizeMode.WrapAround) {
+                    if (this._selectionResizing === SelectionResizeMode.WrapAround) {
                         this._doc.selection.patternSelectionStart = this._unresizedSelection.start;
                         this._doc.selection.patternSelectionEnd = this._unresizedSelection.end;
                     }
@@ -37488,7 +37608,7 @@ You should be redirected to the song at:<br /><br />
                 this._dragChange = sequence;
                 this._lastChangeWasPatternSelection = this._doc.lastChangeWas(this._changePatternSelection);
                 this._doc.setProspectiveChange(this._dragChange);
-                if (this._resizeSelectionMode === SelectionResizeMode.WrapAround &&
+                if (this._selectionResizing === SelectionResizeMode.WrapAround &&
                     (this._cursorAtStartOfSelection() || this._cursorAtEndOfSelection())) {
                     this.container.requestPointerLock();
                     this._mouseDragging = true;
@@ -37566,13 +37686,33 @@ You should be redirected to the song at:<br /><br />
                 const currentPart = this._snapToMinDivision(this._mouseX / this._partWidth);
                 if (this._draggingStartOfSelection || this._draggingEndOfSelection) {
                     const pattern = this._doc.getCurrentPattern(this._barOffset);
-                    const newStart = this._draggingStartOfSelection
-                        ? Math.max(0, Math.min(this._doc.song.partsPerPattern, currentPart))
-                        : this._doc.selection.patternSelectionStart;
-                    const newEnd = this._draggingEndOfSelection
-                        ? Math.max(0, Math.min(this._doc.song.partsPerPattern, currentPart))
-                        : this._doc.selection.patternSelectionEnd;
-                    if (this._resizeSelectionMode === SelectionResizeMode.WrapAround) {
+                    let newStart = this._doc.selection.patternSelectionStart;
+                    let newEnd = this._doc.selection.patternSelectionEnd;
+                    if (!this._shiftHeld || this._selectionSnapping === SelectionResizeSnapping.Rhythm) {
+                        if (this._draggingStartOfSelection) {
+                            newStart = Math.max(0, Math.min(this._doc.song.partsPerPattern, currentPart));
+                        }
+                        else {
+                            newEnd = Math.max(0, Math.min(this._doc.song.partsPerPattern, currentPart));
+                        }
+                    }
+                    else if (this._shiftHeld && pattern !== null) {
+                        const snapAll = this._selectionSnapping === SelectionResizeSnapping.SnapFeaturesIntersect ||
+                            this._selectionSnapping === SelectionResizeSnapping.SnapFeaturesUnion;
+                        const result = search(this._doc, pattern, false, currentPart, true, snapAll, snapAll);
+                        if (result) {
+                            if (this._selectionSnapping === SelectionResizeSnapping.SnapFeaturesIntersect ||
+                                this._selectionSnapping === SelectionResizeSnapping.SnapNotesIntersect) {
+                                newStart = this._draggingStartOfSelection ? result.x1 : currentPart > newStart ? result.x1 : Math.min(newStart, result.x1);
+                                newEnd = this._draggingEndOfSelection ? result.x2 : currentPart > newEnd ? result.x2 : Math.min(newEnd, result.x2);
+                            }
+                            else {
+                                newStart = this._draggingStartOfSelection ? result.x1 : Math.min(newStart, result.x1);
+                                newEnd = this._draggingEndOfSelection ? result.x2 : Math.max(newEnd, result.x2);
+                            }
+                        }
+                    }
+                    if (this._selectionResizing === SelectionResizeMode.WrapAround) {
                         this._mouseLockXShift +=
                             (newStart - this._doc.selection.patternSelectionStart) +
                                 (newEnd - this._doc.selection.patternSelectionEnd);
@@ -37580,7 +37720,7 @@ You should be redirected to the song at:<br /><br />
                     else {
                         sequence.append(new ChangePatternSelection(this._doc, newStart, newEnd));
                     }
-                    if (this._resizeSelectionMode === SelectionResizeMode.WrapAround) {
+                    if (this._selectionResizing === SelectionResizeMode.WrapAround) {
                         if (pattern) {
                             const coordsWidth = this._doc.selection.patternSelectionEnd - this._doc.selection.patternSelectionStart;
                             const origCoordsWidth = this._unresizedSelection.end - this._unresizedSelection.start;
@@ -37588,7 +37728,7 @@ You should be redirected to the song at:<br /><br />
                             sequence.append(wrap);
                         }
                     }
-                    else if (this._resizeSelectionMode === SelectionResizeMode.Stretch) {
+                    else if (this._selectionResizing === SelectionResizeMode.Stretch) {
                         if (pattern) {
                             const stretch = new ChangeStretchHorizontal(this._doc, pattern, this._doc.selection.patternSelectionStart, this._doc.selection.patternSelectionEnd, this._unresizedSelection.start, this._unresizedSelection.end);
                             sequence.append(stretch);
@@ -38016,7 +38156,7 @@ You should be redirected to the song at:<br /><br />
             else {
                 this._selectionRect.setAttribute("visibility", "hidden");
             }
-            if (this._resizeSelectionMode === SelectionResizeMode.Move) {
+            if (this._selectionResizing === SelectionResizeMode.Move) {
                 this._selectionRect.setAttribute("fill", ColorConfig.boxSelectionFill);
             }
             else {
@@ -38168,7 +38308,8 @@ You should be redirected to the song at:<br /><br />
                         const pattern2 = this._doc.song.getPattern(channel, this._doc.bar + this._barOffset);
                         if (pattern2 == null)
                             continue;
-                        const octaveOffset = this._doc.getBaseVisibleOctave(channel) * Config.pitchesPerOctave;
+                        const channelShown = this._doc.prefs.pitchSyncScrollBar ? this._doc.channel : channel;
+                        const octaveOffset = this._doc.getBaseVisibleOctave(channelShown) * Config.pitchesPerOctave;
                         for (const note of pattern2.notes) {
                             for (const pitch of note.pitches) {
                                 let notePath = SVG.path();
@@ -38328,13 +38469,18 @@ You should be redirected to the song at:<br /><br />
         _pitchToPixelHeight(pitch) {
             return this._pitchHeight * (this._pitchCount - (pitch) - 0.5);
         }
-        switchEditingMode(mode) {
-            if (this._resizeSelectionMode !== mode) {
-                this._resizeSelectionMode = mode;
+        setSelectionResizeMode(mode) {
+            if (this._selectionResizing !== mode) {
+                this._selectionResizing = mode;
                 this._unresizedSelection.start = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0;
                 this._unresizedSelection.end = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : 0;
             }
             this._updateSelection();
+        }
+        setSelectionResizeSnapping(mode) {
+            if (this._selectionSnapping !== mode) {
+                this._selectionSnapping = mode;
+            }
         }
     }
 
@@ -38407,26 +38553,11 @@ You should be redirected to the song at:<br /><br />
             this._functionTargetsPitch = false;
             this._monitoredChannel = -1;
             this._rememberDisabledValues = [];
-            this._whenSelectionModeChanged = (type) => {
-                [
-                    { type: SelectionResizeMode.Move, obj: this._selectionModeMoveLabel },
-                    { type: SelectionResizeMode.WrapAround, obj: this._selectionModeWrapLabel },
-                    { type: SelectionResizeMode.Stretch, obj: this._selectionModeStretchLabel }
-                ].forEach((entry) => {
-                    if (type == entry.type) {
-                        if (!entry.obj.classList.contains('selected-tab')) {
-                            entry.obj.classList.add('selected-tab');
-                        }
-                    }
-                    else {
-                        entry.obj.classList.remove('selected-tab');
-                    }
-                });
-                this._patternEditor.switchEditingMode(type);
-                this._selectionModeLabel.innerText =
-                    (type === SelectionResizeMode.Move) ? "Resizing selection is normal" :
-                        (type === SelectionResizeMode.WrapAround) ? "Resizing selection wraps around" :
-                            "Resizing selection stretches";
+            this._setResizeMode = () => {
+                this._patternEditor.setSelectionResizeMode(Number(this._resizeModeDropdown.value));
+            };
+            this._setSnapMode = () => {
+                this._patternEditor.setSelectionResizeSnapping(Number(this._snappingModeDropdown.value));
             };
             this._whenSettingButtonClicked = (event) => {
                 const modTrackIndex = Config.modCount - this._affectModChannelNum.valueAsNumber;
@@ -38575,17 +38706,25 @@ You should be redirected to the song at:<br /><br />
             this._doc.notifier.watch(this._monitorChannelType);
         }
         _constructHTML() {
-            const _selectionOpsDescription = div$c({ style: `padding: 3px 0; max-width: 15em; text-align: center; color: ${ColorConfig.secondaryText};` }, "Selection");
-            this._selectionModeLabel = div$c({ style: `padding: 3px 0; color: ${ColorConfig.secondaryText};` }, "Resizing selection is normal");
-            const _selectionModeBtnMove = input$7({ type: "radio", name: "selection-mode-radio-group", class: "tab-settings-radio" });
-            this._selectionModeMoveLabel = div$c({ class: "tab-settings-radio selected-tab" }, "↤");
-            const _selectionModeBtnWrap = input$7({ type: "radio", name: "selection-mode-radio-group", class: "tab-settings-radio" });
-            this._selectionModeWrapLabel = div$c({ class: "tab-settings-radio" }, "⟺");
-            const _selectionModeBtnStretch = input$7({ type: "radio", name: "selection-mode-radio-group", class: "tab-settings-radio" });
-            this._selectionModeStretchLabel = div$c({ class: "tab-settings-radio" }, "↔");
-            const _selectionModeButtonsGroup = div$c({ class: "tab-settings-buttons-group", style: "margin-bottom: 0.4rem;" }, div$c({ class: "tab-settings-radiodiv" }, _selectionModeBtnMove, this._selectionModeMoveLabel), div$c({ class: "tab-settings-radiodiv" }, _selectionModeBtnWrap, this._selectionModeWrapLabel), div$c({ class: "tab-settings-radiodiv" }, _selectionModeBtnStretch, this._selectionModeStretchLabel));
+            const selectionOpsDescription = div$c({ style: `padding: 3px 0; max-width: 15em; text-align: center; color: ${ColorConfig.secondaryText};` }, "Pattern Controls");
+            this._resizeModeDropdown = select$9();
+            [
+                { lbl: 'Move', val: SelectionResizeMode.Move, x: true },
+                { lbl: 'Stretch', val: SelectionResizeMode.Stretch },
+                { lbl: 'Wrap around', val: SelectionResizeMode.WrapAround }
+            ].forEach(o => this._resizeModeDropdown.appendChild(option$9({ value: o.val, selected: o.x }, o.lbl)));
+            this._resizeModeDropdown.addEventListener('change', this._setResizeMode);
+            this._snappingModeDropdown = select$9();
+            [
+                { lbl: 'Rhythm', val: SelectionResizeSnapping.Rhythm },
+                { lbl: 'Features', val: SelectionResizeSnapping.SnapFeaturesUnion, x: true },
+                { lbl: 'Notes', val: SelectionResizeSnapping.SnapNotesUnion },
+                { lbl: 'Notes (exclusive)', val: SelectionResizeSnapping.SnapNotesIntersect },
+                { lbl: 'Features (exclusive)', val: SelectionResizeSnapping.SnapFeaturesIntersect }
+            ].forEach(o => this._snappingModeDropdown.appendChild(option$9({ value: o.val, selected: o.x }, o.lbl)));
+            this._snappingModeDropdown.addEventListener('change', this._setSnapMode);
             this._affectModChannelNum = input$7({ type: "number", step: "1", min: 1, max: Config.modCount, value: "1" });
-            this._affectModChannelContainer = div$c({ class: "selectionOps-action" }, this._affectModChannelNum, div$c({ class: "tip", onclick: () => this._tipHandler("selectionModTarget") }, "Mod Track #"));
+            this._affectModChannelContainer = div$c({ class: "selectionOps-action" }, this._affectModChannelNum, div$c({ class: "tip", onclick: () => this._tipHandler("selectionModTarget") }, "Modulation track #"));
             this._merge = button$c({ class: "selectionOps-actionbutton noteOpMerge" });
             this._mergeAll = input$7({ type: "checkbox", class: "selectionOps-checkbox" });
             this._bridge = button$c({ class: "selectionOps-actionbutton noteOpBridge" });
@@ -38630,7 +38769,10 @@ You should be redirected to the song at:<br /><br />
             this._splitDropdownGroup = div$c({ class: "editor-controls", style: "display: none;" }, div$c({ class: "selectionOps-row-inside" }, this._splitSliderInputBox, this._splitSlider.container), div$c({ class: "selectionOps-row-inside" }, label$1({ class: "checkbox-container" }, this._splitAcross, "Across"), label$1({ class: "checkbox-container" }, this._splitAbsolute, "Absolute")));
             this._volDropdownGroup = div$c({ class: "editor-controls", style: "display: none;" }, div$c({ class: "selectionOps-action" }, this._volGainEnd, this._volGainStart, this._volStudioFadeOut, this._volStudioFadeIn, this._volContrastMax));
             this._functionParameterGroup = div$c();
-            const _selectionOps = [
+            const patternControls = [
+                selectionOpsDescription,
+                div$c({ class: "selectionOps-action" }, div$c({ class: "tip", onclick: () => this._tipHandler("selectionResizeMode") }, "Selection resize"), div$c({ class: "selectContainer", style: "padding-left: 4px; width:100%;" }, this._resizeModeDropdown)),
+                div$c({ class: "selectionOps-action" }, div$c({ class: "tip", onclick: () => this._tipHandler("selectionResizeSnapping") }, "Selection snap"), div$c({ class: "selectContainer", style: "padding-left: 4px; width:100%;" }, this._snappingModeDropdown)),
                 this._affectModChannelContainer,
                 div$c({ class: "selectionOps-action" }, this._merge, div$c({ class: "tip", onclick: () => this._tipHandler("selectionMerge") }, "Merge"), label$1({ class: "checkbox-container" }, this._mergeAll, "All")),
                 div$c({ class: "selectionOps-action" }, this._bridge, div$c({ class: "tip", onclick: () => this._tipHandler("selectionBridge") }, "Bridge"), label$1({ class: "checkbox-container" }, this._bridgeGrow, "Grow"), label$1({ class: "checkbox-container" }, this._bridgeBend, "Bend")),
@@ -38644,9 +38786,6 @@ You should be redirected to the song at:<br /><br />
                 div$c({ class: "selectionOps-action" }, this._functionRun, div$c({ class: "tip", onclick: () => this._tipHandler("selectionFunction") }, "Function"), div$c({ class: "selectContainer", style: "padding-left: 4px; width:100%;" }, this._functionSelect)),
                 this._functionParameterGroup
             ];
-            _selectionModeBtnMove.addEventListener("change", () => this._whenSelectionModeChanged(SelectionResizeMode.Move));
-            _selectionModeBtnWrap.addEventListener("change", () => this._whenSelectionModeChanged(SelectionResizeMode.WrapAround));
-            _selectionModeBtnStretch.addEventListener("change", () => this._whenSelectionModeChanged(SelectionResizeMode.Stretch));
             this._splitDropdown.addEventListener("click", () => {
                 this._splitDropdownGroup.style.display = (this._splitDropdownGroup.style.display === "none" ? "" : "none");
             });
@@ -38663,7 +38802,7 @@ You should be redirected to the song at:<br /><br />
             this._splitAcross.addEventListener("change", this._updateSplitSliderParts(this._splitSlider.input));
             this._splitAbsolute.addEventListener("change", this._updateSplitSliderParts(this._splitSlider.input));
             this._updateSplitSliderParts(this._splitSliderInputBox)();
-            this.htmlEntryPoint = div$c({}, _selectionOpsDescription, this._selectionModeLabel, _selectionModeButtonsGroup, ..._selectionOps);
+            this.htmlEntryPoint = div$c({}, ...patternControls);
         }
         _getStepFunctionGUI(preset) {
             var _a;
@@ -40404,6 +40543,14 @@ You should be redirected to the song at:<br /><br />
                         this.messages = [div$5(h2$4("Scale"), p$1("This setting limits the available pitches for adding notes. You may think that there's no point in limiting your choices, but the set of pitches you use has a strong influence on the mood and feel of your song, and these scales serve as guides to help you choose appropriate pitches. Don't worry, you can change the scale at any time, so you're not locked into it. Try making little melodies using all the available pitches of a scale to get a sense for how it sounds."), p$1("The most common scales are major and minor. Assuming your song uses all pitches in the scale and especially \"tonic\" pitches (the purple rows in the pattern editor) then major scales tend to sound more playful or optimistic, whereas minor scales sound more serious or sad."))];
                     }
                     break;
+                case "selectionResizeMode": {
+                    this.messages = [div$5(h2$4("Selection resize behavior"), p$1("After making a selection on the pattern sheet, you can grab the edges of the selection to resize it. Normally, it just resizes the selection. In stretch mode, it also stretches or compresses everything as the bounds change. In wrap-around mode, instead of resizing, it wraps notes to the other side of the selection, even parts of notes."))];
+                    break;
+                }
+                case "selectionResizeSnapping": {
+                    this.messages = [div$5(h2$4("Selection resize snapping"), p$1("Normally grabbing the edges of a selection to extend it will snap to the grid based on the song rhythm, but you can also hold shift before you drag the edge for an alternate snapping mode. You can snap to the ends of notes, or all features (notes and gaps around them). Exclusive snapping changes BOTH of the selection bounds, try it out!"))];
+                    break;
+                }
                 case "selectionMerge": {
                     this.messages = [div$5(h2$4("Merge"), p$1("This makes notes that touch turn into one continuous note. If \"All\" is active, it will merge all notes no matter what, and will even shift notes if it helps to connect them."), p$1("Merge affects on-screen notes that fit within your selection. It also works across channel selections."))];
                     break;
@@ -40460,7 +40607,7 @@ You should be redirected to the song at:<br /><br />
                     break;
                 case "selectionModTarget":
                     {
-                        this.messages = [div$5(h2$4("Modulation track to affect"), p$1("Which modulation channel to affect, #1 is the top track, #2 is the track below it, and so on."))];
+                        this.messages = [div$5(h2$4("Modulation track #"), p$1("Which modulation channel to affect, #1 is the top track, #2 is the track below it, and so on."))];
                     }
                     break;
                 case "key":
@@ -43319,7 +43466,7 @@ You should be redirected to the song at:<br /><br />
             this._volumeBarBox = div({ class: "playback-volume-bar", style: "height: 12px; align-self: center;" }, this._volumeBarContainer);
             this._fileMenu = select({ style: "width: 100%;" }, option({ selected: true, disabled: true, hidden: false }, "File"), option({ value: "new" }, "+ New Blank Song (⇧`)"), option({ value: "import" }, "↑ Import Song... (" + EditorConfig.ctrlSymbol + "O)"), option({ value: "export" }, "↓ Export Song... (" + EditorConfig.ctrlSymbol + "S)"), option({ value: "copyUrl" }, "⎘ Copy Song URL"), option({ value: "shareUrl" }, "⤳ Share Song URL"), option({ value: "configureShortener" }, "🛠 Customize Url Shortener..."), option({ value: "shortenUrl" }, "… Shorten Song URL"), option({ value: "viewPlayer" }, "▶ View in Song Player (⇧P)"), option({ value: "copyEmbed" }, "⎘ Copy HTML Embed Code"), option({ value: "songRecovery" }, "⚠ Recover Recent Song... (`)"));
             this._editMenu = select({ style: "width: 100%;" }, option({ selected: true, disabled: true, hidden: false }, "Edit"), option({ value: "undo" }, "Undo (Z)"), option({ value: "redo" }, "Redo (Y)"), option({ value: "copy" }, "Copy Pattern (C)"), option({ value: "pasteNotes" }, "Paste Pattern Notes (V)"), option({ value: "pasteNumbers" }, "Paste Pattern Numbers (" + EditorConfig.ctrlSymbol + "⇧V)"), option({ value: "insertBars" }, "Insert Bar (⏎)"), option({ value: "deleteBars" }, "Delete Selected Bars (⌫)"), option({ value: "insertChannel" }, "Insert Channel (" + EditorConfig.ctrlSymbol + "⏎)"), option({ value: "deleteChannel" }, "Delete Selected Channels (" + EditorConfig.ctrlSymbol + "⌫)"), option({ value: "selectChannel" }, "Select Channel (⇧A)"), option({ value: "selectAll" }, "Select All (A)"), option({ value: "duplicatePatterns" }, "Duplicate Reused Patterns (D)"), option({ value: "transposeUp" }, "Move Notes Up (+ or ⇧+)"), option({ value: "transposeDown" }, "Move Notes Down (- or ⇧-)"), option({ value: "moveNotesSideways" }, "Move All Notes Sideways... (W)"), option({ value: "generateEuclideanRhythm" }, "Generate Euclidean Rhythm... (E)"), option({ value: "beatsPerBar" }, "Change Beats Per Bar... (⇧B)"), option({ value: "barCount" }, "Change Song Length... (L)"), option({ value: "channelSettings" }, "Channel Settings... (Q)"), option({ value: "limiterSettings" }, "Limiter Settings... (⇧L)"), option({ value: "addExternal" }, "Add Custom Samples... (⇧Q)"));
-            this._optionsMenu = select({ style: "width: 100%;" }, option({ selected: true, disabled: true, hidden: false }, "Preferences"), optgroup({ label: "Technical" }, option({ value: "autoPlay" }, "Auto Play on Load"), option({ value: "autoFollow" }, "Auto Follow Playhead"), option({ value: "enableNotePreview" }, "Hear Added Notes"), option({ value: "notesOutsideScale" }, "Place Notes Out of Scale"), option({ value: "setDefaultScale" }, "Set Current Scale as Default"), option({ value: "alwaysFineNoteVol" }, "Always Fine Note Volume"), option({ value: "enableChannelMuting" }, "Enable Channel Muting"), option({ value: "instrumentCopyPaste" }, "Enable Copy/Paste Buttons"), option({ value: "instrumentImportExport" }, "Enable Import/Export Buttons"), option({ value: "displayBrowserUrl" }, "Enable Song Data in URL"), option({ value: "closePromptByClickoff" }, "Close Prompts on Click Off"), option({ value: "recordingSetup" }, "Note Recording...")), optgroup({ label: "Appearance" }, option({ value: "showFifth" }, 'Highlight "Fifth" Note'), option({ value: "notesFlashWhenPlayed" }, "Notes Flash When Played"), option({ value: "instrumentButtonsAtTop" }, "Instrument Buttons at Top"), option({ value: "frostedGlassBackground" }, "Frosted Glass Prompt Backdrop"), option({ value: "showChannels" }, "Show All Channels"), option({ value: "showScrollBar" }, "Show Octave Scroll Bar"), option({ value: "showInstrumentScrollbars" }, "Show Intsrument Scrollbars"), option({ value: "showLetters" }, "Show Piano Keys"), option({ value: "displayVolumeBar" }, "Show Playback Volume"), option({ value: "showOscilloscope" }, "Show Oscilloscope"), option({ value: "showSampleLoadingStatus" }, "Show Sample Loading Status"), option({ value: "showDescription" }, "Show Description"), option({ value: "layout" }, "Set Layout..."), option({ value: "colorTheme" }, "Set Theme..."), option({ value: "customTheme" }, "Custom Theme...")));
+            this._optionsMenu = select({ style: "width: 100%;" }, option({ selected: true, disabled: true, hidden: false }, "Preferences"), optgroup({ label: "Technical" }, option({ value: "autoPlay" }, "Auto Play on Load"), option({ value: "autoFollow" }, "Auto Follow Playhead"), option({ value: "enableNotePreview" }, "Hear Added Notes"), option({ value: "notesOutsideScale" }, "Place Notes Out of Scale"), option({ value: "setDefaultScale" }, "Set Current Scale as Default"), option({ value: "alwaysFineNoteVol" }, "Always Fine Note Volume"), option({ value: "enableChannelMuting" }, "Enable Channel Muting"), option({ value: "instrumentCopyPaste" }, "Enable Copy/Paste Buttons"), option({ value: "instrumentImportExport" }, "Enable Import/Export Buttons"), option({ value: "displayBrowserUrl" }, "Enable Song Data in URL"), option({ value: "closePromptByClickoff" }, "Close Prompts on Click Off"), option({ value: "recordingSetup" }, "Note Recording...")), optgroup({ label: "Appearance" }, option({ value: "showFifth" }, 'Highlight "Fifth" Note'), option({ value: "notesFlashWhenPlayed" }, "Notes Flash When Played"), option({ value: "instrumentButtonsAtTop" }, "Instrument Buttons at Top"), option({ value: "frostedGlassBackground" }, "Frosted Glass Prompt Backdrop"), option({ value: "showChannels" }, "Show All Channels"), option({ value: "showScrollBar" }, "Show Octave Scroll Bar"), option({ value: "pitchSyncScrollBar" }, "Pitch-sync Shown Channels"), option({ value: "showInstrumentScrollbars" }, "Show Settings Scrollbars"), option({ value: "showLetters" }, "Show Piano Keys"), option({ value: "displayVolumeBar" }, "Show Playback Volume"), option({ value: "showOscilloscope" }, "Show Oscilloscope"), option({ value: "showSampleLoadingStatus" }, "Show Sample Loading Status"), option({ value: "showDescription" }, "Show Description"), option({ value: "layout" }, "Set Layout..."), option({ value: "colorTheme" }, "Set Theme..."), option({ value: "customTheme" }, "Custom Theme...")));
             this._scaleSelect = buildOptions(select(), Config.scales.map(scale => scale.name));
             this._keySelect = buildOptions(select(), Config.keys.map(key => key.name).reverse());
             this._octaveStepper = input({ style: "width: 59.5%;", type: "number", min: Config.octaveMin, max: Config.octaveMax, value: "0" });
@@ -43339,9 +43486,9 @@ You should be redirected to the song at:<br /><br />
             this._algorithmSelect = buildOptions(select(), Config.algorithms.map(algorithm => algorithm.name));
             this._algorithmSelectRow = div({ class: "selectRow" }, span({ class: "tip", onclick: () => this._openPrompt("algorithm") }, "Algorithm: "), div({ class: "selectContainer" }, this._algorithmSelect));
             this._tabButtonInstrument = input({ type: "radio", name: 'tab-settings-radio-group', class: "tab-settings-radio" });
-            this._tabBtnInstrLabel = div({ class: "tab-settings-radio selected-tab" }, TabControls[TabSettingType.EditInstrument].icon);
+            this._tabBtnInstrLabel = div({ class: "tab-settings-radio selected-tab" }, TabControls[TabSettingType.ChannelSettings].icon);
             this._tabButtonSelection = input({ type: "radio", name: 'tab-settings-radio-group', class: "tab-settings-radio" });
-            this._tabBtnSelLabel = div({ class: "tab-settings-radio" }, TabControls[TabSettingType.EditSelection].icon);
+            this._tabBtnSelLabel = div({ class: "tab-settings-radio" }, TabControls[TabSettingType.PatternControls].icon);
             this._tabSettingsButtonsGroup = div({ class: "tab-settings-buttons-group" }, div({ class: "tab-settings-radiodiv" }, this._tabButtonInstrument, this._tabBtnInstrLabel), div({ class: "tab-settings-radiodiv" }, this._tabButtonSelection, this._tabBtnSelLabel));
             this._instrumentButtons = [];
             this._instrumentAddButton = button({ type: "button", class: "add-instrument last-button" });
@@ -43656,9 +43803,9 @@ You should be redirected to the song at:<br /><br />
                 this._sampleLoadingStatusContainer.style.display = this._doc.prefs.showSampleLoadingStatus ? "" : "none";
                 this._instrumentCopyGroup.style.display = this._doc.prefs.instrumentCopyPaste ? "" : "none";
                 this._instrumentExportGroup.style.display = this._doc.prefs.instrumentImportExport ? "" : "none";
-                this._instrumentAndModulatorSettings.style.display = this._doc.viewedTab == TabControls[TabSettingType.EditInstrument] ? "" : "none";
-                this._editorTabSelection.htmlEntryPoint.style.display = this._doc.viewedTab === TabControls[TabSettingType.EditSelection] ? "" : "none";
-                this._instrumentAndModulatorSettings.style.scrollbarWidth = this._doc.prefs.showInstrumentScrollbars ? "" : "none";
+                this._instrumentAndModulatorSettings.style.display = this._doc.viewedTab == TabControls[TabSettingType.ChannelSettings] ? "" : "none";
+                this._editorTabSelection.htmlEntryPoint.style.display = this._doc.viewedTab === TabControls[TabSettingType.PatternControls] ? "" : "none";
+                this._instrumentAndModulatorSettings.style.scrollbarWidth = this._doc.prefs.showSettingsScrollbars ? "" : "none";
                 if (document.getElementById('text-content'))
                     document.getElementById('text-content').style.display = this._doc.prefs.showDescription ? "" : "none";
                 if (this._doc.getFullScreen()) {
@@ -43725,7 +43872,8 @@ You should be redirected to the song at:<br /><br />
                     (prefs.frostedGlassBackground ? textOnIcon : textOffIcon) + "Frosted Glass Prompt Backdrop",
                     (prefs.showChannels ? textOnIcon : textOffIcon) + "Show All Channels",
                     (prefs.showScrollBar ? textOnIcon : textOffIcon) + "Show Octave Scroll Bar",
-                    (prefs.showInstrumentScrollbars ? textOnIcon : textOffIcon) + "Show Instrument Scrollbars",
+                    (prefs.pitchSyncScrollBar ? textOnIcon : textOffIcon) + "Pitch-sync Shown Channels",
+                    (prefs.showSettingsScrollbars ? textOnIcon : textOffIcon) + "Show Settings Scrollbars",
                     (prefs.showLetters ? textOnIcon : textOffIcon) + "Show Piano Keys",
                     (prefs.displayVolumeBar ? textOnIcon : textOffIcon) + "Show Playback Volume",
                     (prefs.showOscilloscope ? textOnIcon : textOffIcon) + "Show Oscilloscope",
@@ -43925,12 +44073,12 @@ You should be redirected to the song at:<br /><br />
                             this._chipWavePlayBackwardsRow.style.display = "none";
                         }
                         setSelectedValue(this._chipWaveSelect, instrument.chipWave);
-                        this._useChipWaveAdvancedLoopControlsBox.checked = instrument.isUsingAdvancedLoopControls ? true : false;
+                        this._useChipWaveAdvancedLoopControlsBox.checked = instrument.isUsingAdvancedLoopControls;
                         setSelectedValue(this._chipWaveLoopModeSelect, instrument.chipWaveLoopMode);
                         this._chipWaveLoopStartStepper.value = instrument.chipWaveLoopStart + "";
                         this._chipWaveLoopEndStepper.value = instrument.chipWaveLoopEnd + "";
                         this._chipWaveStartOffsetStepper.value = instrument.chipWaveStartOffset + "";
-                        this._chipWavePlayBackwardsBox.checked = instrument.chipWavePlayBackwards ? true : false;
+                        this._chipWavePlayBackwardsBox.checked = instrument.chipWavePlayBackwards;
                     }
                     if (instrument.type == 9) {
                         this._customWaveDraw.style.display = "";
@@ -45108,7 +45256,7 @@ You should be redirected to the song at:<br /><br />
                             this._doc.selection.selectChannel();
                         }
                         else {
-                            this._doc.selection.selectAll();
+                            this._doc.selection.selectAllPatterns();
                         }
                         event.preventDefault();
                         break;
@@ -45759,8 +45907,8 @@ You should be redirected to the song at:<br /><br />
             };
             this._whenSelectTab = (type) => {
                 [
-                    { type: TabSettingType.EditInstrument, obj: this._tabBtnInstrLabel },
-                    { type: TabSettingType.EditSelection, obj: this._tabBtnSelLabel }
+                    { type: TabSettingType.ChannelSettings, obj: this._tabBtnInstrLabel },
+                    { type: TabSettingType.PatternControls, obj: this._tabBtnSelLabel }
                 ].forEach((entry) => {
                     if (type == entry.type) {
                         if (!entry.obj.classList.contains('selected-tab')) {
@@ -46009,7 +46157,7 @@ You should be redirected to the song at:<br /><br />
                         this._doc.selection.transpose(false, false);
                         break;
                     case "selectAll":
-                        this._doc.selection.selectAll();
+                        this._doc.selection.selectAllPatterns();
                         break;
                     case "selectChannel":
                         this._doc.selection.selectChannel();
@@ -46070,6 +46218,9 @@ You should be redirected to the song at:<br /><br />
                     case "showScrollBar":
                         this._doc.prefs.showScrollBar = !this._doc.prefs.showScrollBar;
                         break;
+                    case "pitchSyncScrollBar":
+                        this._doc.prefs.pitchSyncScrollBar = !this._doc.prefs.pitchSyncScrollBar;
+                        break;
                     case "alwaysFineNoteVol":
                         this._doc.prefs.alwaysFineNoteVol = !this._doc.prefs.alwaysFineNoteVol;
                         break;
@@ -46106,7 +46257,7 @@ You should be redirected to the song at:<br /><br />
                         this._doc.prefs.showDescription = !this._doc.prefs.showDescription;
                         break;
                     case "showInstrumentScrollbars":
-                        this._doc.prefs.showInstrumentScrollbars = !this._doc.prefs.showInstrumentScrollbars;
+                        this._doc.prefs.showSettingsScrollbars = !this._doc.prefs.showSettingsScrollbars;
                         break;
                     case "showSampleLoadingStatus":
                         this._doc.prefs.showSampleLoadingStatus = !this._doc.prefs.showSampleLoadingStatus;
@@ -46270,8 +46421,8 @@ You should be redirected to the song at:<br /><br />
             this._octaveStepper.addEventListener("change", this._whenSetOctave);
             this._rhythmSelect.addEventListener("change", this._whenSetRhythm);
             this._algorithmSelect.addEventListener("change", this._whenSetAlgorithm);
-            this._tabButtonInstrument.addEventListener("change", () => this._whenSelectTab(TabSettingType.EditInstrument));
-            this._tabButtonSelection.addEventListener("change", () => this._whenSelectTab(TabSettingType.EditSelection));
+            this._tabButtonInstrument.addEventListener("change", () => this._whenSelectTab(TabSettingType.ChannelSettings));
+            this._tabButtonSelection.addEventListener("change", () => this._whenSelectTab(TabSettingType.PatternControls));
             this._instrumentsButtonBar.addEventListener("click", this._whenSelectInstrument);
             this._feedbackTypeSelect.addEventListener("change", this._whenSetFeedbackType);
             this._algorithm6OpSelect.addEventListener("change", this._whenSet6OpAlgorithm);
@@ -46781,7 +46932,7 @@ You should be redirected to the song at:<br /><br />
             }
         }
         _renderInstrumentBar(channel, instrumentIndex, colors) {
-            if (this._doc.viewedTab !== TabControls[TabSettingType.EditInstrument]) {
+            if (this._doc.viewedTab !== TabControls[TabSettingType.ChannelSettings]) {
                 return;
             }
             if (this._doc.song.layeredInstruments || this._doc.song.patternInstruments) {
@@ -47484,8 +47635,6 @@ You should be redirected to the song at:<br /><br />
             this.patternSelectionEnd = 0;
             this.patternSelectionActive = false;
             this._changeTranspose = null;
-            this._changeNoteOperations = null;
-            this._changeFlatten = null;
             this._changeTrack = null;
             this._changeInstrument = null;
             this._changeReorder = null;
@@ -47692,48 +47841,6 @@ You should be redirected to the song at:<br /><br />
                     throw new Error();
                 yield pattern;
             }
-        }
-        _getNextNote(backwards) {
-            var _a;
-            if (this._doc.song.getChannelIsMod(this._doc.channel)) {
-                return null;
-            }
-            const notes = (_a = this._doc.getCurrentPattern()) === null || _a === void 0 ? void 0 : _a.notes;
-            let newX1 = -1;
-            let newX2 = -1;
-            if (notes && notes.length > 0) {
-                const firstNote = backwards ? notes[notes.length - 1] : notes[0];
-                const lastNote = backwards ? notes[0] : notes[notes.length - 1];
-                if (this._doc.selection.patternSelectionActive) {
-                    if (backwards) {
-                        for (let i = notes.length - 1; i >= 0; i--) {
-                            if (notes[i].end <= this._doc.selection.patternSelectionStart) {
-                                newX1 = notes[i].start;
-                                newX2 = notes[i].end;
-                                break;
-                            }
-                        }
-                    }
-                    else {
-                        for (const note of notes) {
-                            if (note.start >= this._doc.selection.patternSelectionEnd) {
-                                newX1 = note.start;
-                                newX2 = note.end;
-                                break;
-                            }
-                        }
-                    }
-                }
-                else {
-                    newX1 = firstNote.start;
-                    newX2 = firstNote.end;
-                }
-                if (newX1 === -1) {
-                    newX1 = lastNote.start;
-                    newX2 = lastNote.end;
-                }
-            }
-            return { x1: newX1, x2: newX2 };
         }
         _parseCopiedInstrumentArray(patternCopy, channelIndex) {
             const instruments = Array.from(patternCopy["instruments"]).map(i => i >>> 0);
@@ -48057,27 +48164,7 @@ You should be redirected to the song at:<br /><br />
             }
             this._doc.record(group);
         }
-        selectNextNote(backwards, combine) {
-            const result = this._getNextNote(backwards === true);
-            if (result !== null) {
-                let x1 = result.x1;
-                let x2 = result.x2;
-                if (this._doc.selection.patternSelectionActive) {
-                    if (combine === 'union') {
-                        x1 = Math.min(this._doc.selection.patternSelectionStart, result.x1);
-                        x2 = Math.max(this._doc.selection.patternSelectionEnd, result.x2);
-                    }
-                    else if (combine === 'intersect') {
-                        x1 = Math.max(this._doc.selection.patternSelectionStart, result.x1);
-                        x2 = Math.min(this._doc.selection.patternSelectionEnd, result.x2);
-                    }
-                }
-                const select = new ChangeGroup();
-                select.append(new ChangePatternSelection(this._doc, x1, x2));
-                this._doc.record(select);
-            }
-        }
-        selectAll() {
+        selectAllPatterns() {
             new ChangePatternSelection(this._doc, 0, 0);
             if (this.boxSelectionBar == 0 &&
                 this.boxSelectionChannel == 0 &&
@@ -48224,35 +48311,35 @@ You should be redirected to the song at:<br /><br />
             this._doc.record(this._changeTrack, canReplaceLastChange);
         }
         noteMerge(adjacentOnly, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
                 const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     if (adjacentOnly || this._doc.song.getChannelIsMod(channelIndex)) {
-                        this._changeNoteOperations.append(new ChangeMergeAcrossAdjacent(this._doc, pattern, undefined, undefined, pitchIfMod));
+                        change.append(new ChangeMergeAcrossAdjacent(this._doc, pattern, undefined, undefined, pitchIfMod));
                     }
                     else {
-                        this._changeNoteOperations.append(new ChangeMergeAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                        change.append(new ChangeMergeAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                     }
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteBridge(grow, doBends, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
                 const isMod = this._doc.song.getChannelIsMod(channelIndex);
                 const isNoise = this._doc.song.getChannelIsNoise(channelIndex);
                 const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     const bridgeOp = new ChangeBridgeAcross(this._doc, pattern, grow, doBends && !isMod, isNoise, undefined, undefined, pitchIfMod);
-                    this._changeNoteOperations.append(bridgeOp);
+                    change.append(bridgeOp);
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteSplitAcross(cuts, absolute, perNote, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             let x1 = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0;
             let x2 = this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern;
             if (absolute && !perNote) {
@@ -48280,18 +48367,18 @@ You should be redirected to the song at:<br /><br />
                             else {
                                 adjustedCuts = cuts;
                             }
-                            this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, adjustedCuts, adjustedX1, adjustedX2, pitchIfMod));
+                            change.append(new ChangeSplitAcross(this._doc, pattern, adjustedCuts, adjustedX1, adjustedX2, pitchIfMod));
                         }
                     }
                     else {
-                        this._changeNoteOperations.append(new ChangeSplitAcross(this._doc, pattern, cuts, x1, x2, pitchIfMod));
+                        change.append(new ChangeSplitAcross(this._doc, pattern, cuts, x1, x2, pitchIfMod));
                     }
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteFlattenAcross(dontAveragePitch, vol, pitchIndex) {
-            this._changeFlatten = new ChangeGroup();
+            const change = new ChangeGroup();
             const x1 = (this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0);
             const x2 = (this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern);
             for (const channelIndex of this._eachSelectedChannel()) {
@@ -48305,68 +48392,68 @@ You should be redirected to the song at:<br /><br />
                         if (note.end > x1 && note.start < x2) {
                             if (vol) {
                                 if (isNoise) {
-                                    this._changeFlatten.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'pin', add: ['maxrange - minrange'], onlyExistingPins: true }));
-                                    this._changeFlatten.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'pin', mult: ['1 - num / len'], onlyExistingPins: true }));
+                                    change.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'pin', add: ['maxrange - minrange'], onlyExistingPins: true }));
+                                    change.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'pin', mult: ['1 - num / len'], onlyExistingPins: true }));
                                 }
                                 else {
-                                    this._changeFlatten.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'note', add: ['maxrange - minrange'], onlyExistingPins: true }, undefined, undefined, pitchIfMod));
+                                    change.append(new ChangeStepAcross(this._doc, channelIndex, pattern, { affect: 'vol', per: 'note', add: ['maxrange - minrange'], onlyExistingPins: true }, undefined, undefined, pitchIfMod));
                                 }
                             }
                             else if (!isMod) {
-                                this._changeFlatten.append(new ChangeStretchVerticalRelative(this._doc, channelIndex, pattern, 0, 0, dontAveragePitch, note.start, note.end, bounds));
+                                change.append(new ChangeStretchVerticalRelative(this._doc, channelIndex, pattern, 0, 0, dontAveragePitch, note.start, note.end, bounds));
                             }
                         }
                     }
                 }
             }
-            this._doc.record(this._changeFlatten);
+            this._doc.record(change);
         }
         noteSpreadAcross(spreadPitch, stackOnly, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
                 const isMod = this._doc.song.getChannelIsMod(this._doc.channel);
                 const pitchIfMod = isMod ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     if (stackOnly) {
                         if (spreadPitch && !isMod) {
-                            this._changeNoteOperations.append(new ChangeStackBottomAcross(this._doc, pattern));
+                            change.append(new ChangeStackBottomAcross(this._doc, pattern));
                         }
                         else if (!spreadPitch) {
-                            this._changeNoteOperations.append(new ChangeStackLeftAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                            change.append(new ChangeStackLeftAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                         }
                     }
                     else if (spreadPitch && !isMod) {
-                        this._changeNoteOperations.append(new ChangeSpreadVertical(this._doc, pattern));
+                        change.append(new ChangeSpreadVertical(this._doc, pattern));
                     }
                     else if (!spreadPitch) {
-                        this._changeNoteOperations.append(new ChangeSpreadAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                        change.append(new ChangeSpreadAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                     }
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteTapAcross(pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
                 const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._changeNoteOperations.append(new ChangeTapNotesAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
+                    change.append(new ChangeTapNotesAcross(this._doc, pattern, undefined, undefined, pitchIfMod));
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteStepAcross(data, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             for (const channelIndex of this._eachSelectedChannel()) {
                 const pitchIfMod = this._doc.song.getChannelIsMod(channelIndex) ? pitchIndex : undefined;
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
-                    this._changeNoteOperations.append(new ChangeStepAcross(this._doc, channelIndex, pattern, data, undefined, undefined, pitchIfMod));
+                    change.append(new ChangeStepAcross(this._doc, channelIndex, pattern, data, undefined, undefined, pitchIfMod));
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         noteMirrorAcross(isVertical, pitchIndex) {
-            this._changeNoteOperations = new ChangeGroup();
+            const change = new ChangeGroup();
             const range = {
                 start: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionStart : 0,
                 end: this._doc.selection.patternSelectionActive ? this._doc.selection.patternSelectionEnd : this._doc.song.partsPerPattern
@@ -48377,14 +48464,14 @@ You should be redirected to the song at:<br /><br />
                 for (const pattern of this._eachSelectedPattern(channelIndex)) {
                     const vertRange = getVerticalBounds(pattern.notes, range.start, range.end);
                     if (isVertical && !isMod) {
-                        this._changeNoteOperations.append(new ChangeStretchVertical(this._doc, channelIndex, pattern, vertRange.max, vertRange.min));
+                        change.append(new ChangeStretchVertical(this._doc, channelIndex, pattern, vertRange.max, vertRange.min));
                     }
                     if (!isVertical) {
-                        this._changeNoteOperations.append(new ChangeMirrorHorizontal(this._doc, pattern, false, range.start, range.end, pitchIfMod));
+                        change.append(new ChangeMirrorHorizontal(this._doc, pattern, false, range.start, range.end, pitchIfMod));
                     }
                 }
             }
-            this._doc.record(this._changeNoteOperations);
+            this._doc.record(change);
         }
         transpose(upward, octave) {
             const canReplaceLastChange = this._doc.lastChangeWas(this._changeTranspose);
@@ -48505,6 +48592,7 @@ You should be redirected to the song at:<br /><br />
             this.showLetters = window.localStorage.getItem("showLetters") == "true";
             this.showChannels = window.localStorage.getItem("showChannels") == "true";
             this.showScrollBar = window.localStorage.getItem("showScrollBar") != "false";
+            this.pitchSyncScrollBar = window.localStorage.getItem("pitchSyncScrollBar") === "true";
             this.alwaysFineNoteVol = window.localStorage.getItem("alwaysFineNoteVol") == "true";
             this.displayVolumeBar = window.localStorage.getItem("displayVolumeBar") != "false";
             this.instrumentCopyPaste = window.localStorage.getItem("instrumentCopyPaste") != "false";
@@ -48523,7 +48611,7 @@ You should be redirected to the song at:<br /><br />
             this.showOscilloscope = window.localStorage.getItem("showOscilloscope") == "true";
             this.showSampleLoadingStatus = window.localStorage.getItem("showSampleLoadingStatus") != "false";
             this.showDescription = window.localStorage.getItem("showDescription") != "false";
-            this.showInstrumentScrollbars = window.localStorage.getItem("showInstrumentScrollbars") == "true";
+            this.showSettingsScrollbars = window.localStorage.getItem("showInstrumentScrollbars") == "true";
             this.closePromptByClickoff = window.localStorage.getItem("closePromptByClickoff") == "true";
             this.frostedGlassBackground = window.localStorage.getItem("frostedGlassBackground") == "true";
             this.keyboardLayout = window.localStorage.getItem("keyboardLayout") || "pianoTransposingC";
@@ -48554,6 +48642,7 @@ You should be redirected to the song at:<br /><br />
             window.localStorage.setItem("showLetters", this.showLetters ? "true" : "false");
             window.localStorage.setItem("showChannels", this.showChannels ? "true" : "false");
             window.localStorage.setItem("showScrollBar", this.showScrollBar ? "true" : "false");
+            window.localStorage.setItem("pitchSyncScrollBar", this.pitchSyncScrollBar ? "true" : "false");
             window.localStorage.setItem("alwaysFineNoteVol", this.alwaysFineNoteVol ? "true" : "false");
             window.localStorage.setItem("displayVolumeBar", this.displayVolumeBar ? "true" : "false");
             window.localStorage.setItem("enableChannelMuting", this.enableChannelMuting ? "true" : "false");
@@ -48572,7 +48661,7 @@ You should be redirected to the song at:<br /><br />
             window.localStorage.setItem("showOscilloscope", this.showOscilloscope ? "true" : "false");
             window.localStorage.setItem("showSampleLoadingStatus", this.showSampleLoadingStatus ? "true" : "false");
             window.localStorage.setItem("showDescription", this.showDescription ? "true" : "false");
-            window.localStorage.setItem("showInstrumentScrollbars", this.showInstrumentScrollbars ? "true" : "false");
+            window.localStorage.setItem("showInstrumentScrollbars", this.showSettingsScrollbars ? "true" : "false");
             window.localStorage.setItem("closePromptByClickoff", this.closePromptByClickoff ? "true" : "false");
             window.localStorage.setItem("frostedGlassBackground", this.frostedGlassBackground ? "true" : "false");
             window.localStorage.setItem("keyboardLayout", this.keyboardLayout);
@@ -48625,7 +48714,7 @@ You should be redirected to the song at:<br /><br />
             this.muteEditorChannel = 0;
             this.bar = 0;
             this.recentPatternInstruments = [];
-            this.viewedTab = TabControls[TabSettingType.EditInstrument];
+            this.viewedTab = TabControls[TabSettingType.ChannelSettings];
             this.viewedInstrument = [];
             this.recordingModulators = false;
             this.continuingModRecordingChange = null;
